@@ -37,181 +37,60 @@ export async function POST(req: NextRequest) {
     });
 
     // 3. Détection et exécution réelle des ordres système sur Windows
+    const { executeSystemCommand } = await import('@/lib/system-controller');
+    const systemResult = await executeSystemCommand(message);
+
     let actionExecutedNote = '';
-    const lower = message.toLowerCase();
+    if (systemResult.executed) {
+      actionExecutedNote = systemResult.actionNote || '';
 
-    // 3.1 Ordres d'OUVERTURE / LANCEMENT
-    // 3.0 Actions spécifiques dans les applications (ex: WhatsApp message)
-    if (
-      lower.includes('whatsapp') &&
-      (lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') || lower.includes('message') || lower.includes('dis à') || lower.includes('dis a'))
-    ) {
-      const { sendWhatsAppMessage } = await import('@/lib/system-controller');
-      // Extraction du destinataire (ex: "à roysten", "a roysten")
-      const contactMatch = message.match(/(?:à|a)\s+([a-zA-Z0-9_\-\+]+)/i);
-      const contactName = contactMatch ? contactMatch[1].trim() : '';
+      // Si c'est un ordre direct pur (ex: "Allume VS Code", "lance Spotify", "écris un message à Roysten sur WhatsApp : salut")
+      // On répond instantanément avec la formule de majordome d'élite sans passer par un LLM qui hallucinerait des cours Wikipédia
+      if (systemResult.isPureCommand && systemResult.directReply) {
+        const directReply = systemResult.directReply;
+        await saveMessage({
+          conversation_id: convId,
+          role: 'assistant',
+          content: directReply,
+        });
 
-      let msgToSend = '';
-      if (message.includes(':')) {
-        msgToSend = message.split(':')[1]?.trim();
-      } else if (lower.includes('disant que')) {
-        msgToSend = message.split(/disant que/i)[1]?.trim();
-      } else if (lower.includes('pour lui dire')) {
-        msgToSend = message.split(/pour lui dire(?:\s+que)?/i)[1]?.trim();
-      } else {
-        if (contactName) {
-          msgToSend = `Salut ${contactName} ! Message préparé via JARVIS.`;
-        } else {
-          msgToSend = 'Bonjour ! Message envoyé depuis JARVIS Assistant.';
+        if (stream) {
+          const encoder = new TextEncoder();
+          const customStream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ conversationId: convId, type: 'start' })}\n\n`)
+              );
+              // Émission fluide mot par mot
+              const words = directReply.split(' ');
+              words.forEach((w, i) => {
+                const chunk = (i === 0 ? '' : ' ') + w;
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`));
+              });
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+            },
+          });
+
+          return new Response(customStream, {
+            headers: {
+              'Content-Type': 'text/event-stream; charset=utf-8',
+              'Cache-Control': 'no-cache, no-transform',
+              Connection: 'keep-alive',
+            },
+          });
         }
-      }
 
-      if (!msgToSend || msgToSend.length < 2) {
-        msgToSend = contactName ? `Salut ${contactName} !` : 'Bonjour !';
-      }
-
-      await sendWhatsAppMessage(msgToSend, contactName);
-      actionExecutedNote = `WhatsApp a été ouvert au premier plan sur votre écran avec le message prêt pour ${contactName || 'votre contact'} : "${msgToSend}".`;
-    }
-
-    // 3.1 Spotify avec recherche d'artiste ou morceau
-    else if (
-      (lower.includes('spotify') && (lower.includes('mets') || lower.includes('joue') || lower.includes('lance') || lower.includes('cherche'))) ||
-      lower.includes('mets de la musique') ||
-      lower.includes('joue de la musique')
-    ) {
-      const { playSpotify } = await import('@/lib/system-controller');
-      let query = '';
-      const match = message.match(/(?:mets|joue|lance|cherche)\s+(?:de\s+la\s+musique|du|de|des)?\s*(.*?)(?:\s+sur\s+spotify|$)/i);
-      if (match && match[1] && !match[1].toLowerCase().includes('musique')) {
-        query = match[1].trim();
-      }
-      await playSpotify(query);
-      actionExecutedNote = query
-        ? `Spotify a été lancé et recherche "${query}" pour lecture immédiate.`
-        : `Spotify a été lancé au premier plan sur votre écran.`;
-    }
-
-    // 3.2 Recherche YouTube
-    else if (lower.includes('youtube') && (lower.includes('cherche') || lower.includes('regarde') || lower.includes('trouve'))) {
-      const { searchYouTube } = await import('@/lib/system-controller');
-      const match = message.match(/cherche\s+(.*?)\s+sur\s+youtube/i) || message.match(/sur\s+youtube\s+(.*)/i);
-      const query = match ? match[1].trim() : 'tutoriels';
-      await searchYouTube(query);
-      actionExecutedNote = `YouTube a été ouvert avec la recherche : "${query}".`;
-    }
-
-    // 3.3 Recherche Google
-    else if (lower.includes('google') && (lower.includes('cherche') || lower.includes('trouve'))) {
-      const { searchGoogle } = await import('@/lib/system-controller');
-      const match = message.match(/cherche\s+(.*?)\s+sur\s+google/i);
-      const query = match ? match[1].trim() : '';
-      await searchGoogle(query);
-      actionExecutedNote = `Google Chrome a été ouvert avec la recherche : "${query}".`;
-    }
-
-    // 3.4 Ordres d'OUVERTURE / LANCEMENT D'APPLICATIONS
-    else if (
-      lower.includes('ouvre') ||
-      lower.includes('lance') ||
-      lower.includes('demarre') ||
-      lower.includes('démarrer') ||
-      lower.includes('start') ||
-      lower.includes('va sur')
-    ) {
-      const { launchApp, openUrl } = await import('@/lib/system-controller');
-
-      if (lower.includes('vs') || lower.includes('code') || lower.includes('zcode')) {
-        await launchApp('vscode');
-        actionExecutedNote = 'Visual Studio Code a été lancé au premier plan sur votre écran avec le projet Jarvis.';
-      } else if (lower.includes('spotify')) {
-        await launchApp('spotify');
-        actionExecutedNote = 'Spotify a été lancé au premier plan sur votre écran.';
-      } else if (lower.includes('whatsapp')) {
-        await launchApp('whatsapp');
-        actionExecutedNote = 'WhatsApp Desktop a été ouvert au premier plan sur votre écran.';
-      } else if (lower.includes('canva')) {
-        await launchApp('canva');
-        actionExecutedNote = 'Canva a été ouvert sur votre écran.';
-      } else if (lower.includes('capcut')) {
-        await launchApp('capcut');
-        actionExecutedNote = 'CapCut a été ouvert sur votre écran.';
-      } else if (lower.includes('word') || lower.includes('texte')) {
-        await launchApp('word');
-        actionExecutedNote = 'Microsoft Word a été ouvert sur votre écran.';
-      } else if (lower.includes('excel') || lower.includes('tableur')) {
-        await launchApp('excel');
-        actionExecutedNote = 'Microsoft Excel a été ouvert sur votre écran.';
-      } else if (lower.includes('powerpoint') || lower.includes('slide')) {
-        await launchApp('powerpoint');
-        actionExecutedNote = 'Microsoft PowerPoint a été ouvert sur votre écran.';
-      } else if (lower.includes('notepad') || lower.includes('bloc')) {
-        await launchApp('notepad');
-        actionExecutedNote = 'Le Bloc-notes Windows a été ouvert sur votre écran.';
-      } else if (lower.includes('chrome')) {
-        await launchApp('chrome');
-        actionExecutedNote = 'Google Chrome a été lancé.';
-      } else if (lower.includes('edge') || lower.includes('navigateur') || lower.includes('internet')) {
-        await launchApp('edge');
-        actionExecutedNote = 'Le navigateur Microsoft Edge a été ouvert.';
-      } else if (lower.includes('explorer') || lower.includes('fichier') || lower.includes('dossier') || lower.includes('document')) {
-        await launchApp('explorer');
-        actionExecutedNote = 'L\'explorateur de fichiers Windows a été ouvert.';
-      } else if (lower.includes('terminal') || lower.includes('powershell') || lower.includes('console')) {
-        await launchApp('terminal');
-        actionExecutedNote = 'Le terminal PowerShell a été ouvert sur l\'écran.';
-      } else if (lower.includes('paint') || lower.includes('dessin')) {
-        await launchApp('paint');
-        actionExecutedNote = 'Microsoft Paint a été ouvert sur l\'écran.';
-      } else if (lower.includes('youtube')) {
-        await openUrl('https://youtube.com');
-        actionExecutedNote = 'YouTube a été ouvert dans votre navigateur.';
-      } else if (lower.includes('facebook')) {
-        await openUrl('https://facebook.com');
-        actionExecutedNote = 'Facebook a été ouvert dans votre navigateur.';
-      } else if (lower.includes('linkedin')) {
-        await openUrl('https://linkedin.com');
-        actionExecutedNote = 'LinkedIn a été ouvert dans votre navigateur.';
-      } else if (lower.includes('twitter') || lower.includes('sur x')) {
-        await openUrl('https://x.com');
-        actionExecutedNote = 'X (Twitter) a été ouvert dans votre navigateur.';
-      } else if (lower.includes('github')) {
-        await openUrl('https://github.com');
-        actionExecutedNote = 'GitHub a été ouvert dans votre navigateur.';
-      } else if (lower.includes('google')) {
-        await openUrl('https://google.com');
-        actionExecutedNote = 'Google a été ouvert dans votre navigateur.';
-      } else if (lower.includes('gmail') || lower.includes('mail')) {
-        await openUrl('https://mail.google.com');
-        actionExecutedNote = 'Gmail a été ouvert dans votre navigateur.';
-      }
-    }
-
-    // 3.2 Ordres de FERMETURE d'applications
-    if (lower.includes('ferme') || lower.includes('quitte') || lower.includes('arrête') || lower.includes('arrete') || lower.includes('stop app')) {
-      const { closeApp } = await import('@/lib/system-controller');
-      if (lower.includes('vs') || lower.includes('code')) {
-        await closeApp('vscode');
-        actionExecutedNote = 'Visual Studio Code a été fermé.';
-      } else if (lower.includes('chrome')) {
-        await closeApp('chrome');
-        actionExecutedNote = 'Google Chrome a été fermé.';
-      } else if (lower.includes('calc')) {
-        await closeApp('calc');
-        actionExecutedNote = 'La calculatrice a été fermée.';
-      } else if (lower.includes('notepad') || lower.includes('bloc')) {
-        await closeApp('notepad');
-        actionExecutedNote = 'Le Bloc-notes a été fermé.';
-      } else if (lower.includes('spotify')) {
-        await closeApp('spotify');
-        actionExecutedNote = 'Spotify a été arrêté.';
-      } else if (lower.includes('whatsapp')) {
-        await closeApp('whatsapp');
-        actionExecutedNote = 'WhatsApp a été fermé.';
+        return NextResponse.json({
+          conversationId: convId,
+          reply: directReply,
+          modelUsed: 'system-pilot',
+        });
       }
     }
 
     // 3.3 Bascule de langue (Anglais / Français)
+    const lower = message.toLowerCase();
     let languageDirective = '';
     if (lower.includes('en anglais') || lower.includes('in english') || lower.includes('speak english') || lower.includes('talk in english')) {
       languageDirective = '\n[DIRECTIVE LINGUISTIQUE : Roysten souhaite pratiquer son anglais. Réponds-lui entièrement en anglais fluide, élégant et soigné (style JARVIS britannique). Tu peux ajouter à la toute fin un petit tip de vocabulaire ou de grammaire si utile.]';

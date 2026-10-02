@@ -318,3 +318,297 @@ export function inspectDirectory(dirPath?: string) {
     })),
   };
 }
+
+// 5. INTERPRÉTEUR UNIFIÉ ET EXÉCUTEUR DES ORDRES SYSTÈME SUR WINDOWS
+export interface SystemCommandResult {
+  executed: boolean;
+  actionNote?: string;
+  directReply?: string;
+  isPureCommand?: boolean;
+}
+
+export async function executeSystemCommand(rawMessage: string): Promise<SystemCommandResult> {
+  const message = rawMessage.trim();
+  const lower = message.toLowerCase().trim();
+
+  const openVerbs = [
+    'ouvre', 'ouvrir', 'lance', 'lancer', 'allume', 'allumer',
+    'demarre', 'démarre', 'demarrer', 'démarrer', 'start',
+    'active', 'activer', 'mets', 'mettre', 'joue', 'jouer',
+    'affiche', 'afficher', 'exécute', 'run', 'open', 'go', 'play'
+  ];
+
+  const closeVerbs = [
+    'ferme', 'fermer', 'quitte', 'quitter', 'arrête', 'arrete',
+    'arrêter', 'arreter', 'éteins', 'eteins', 'éteindre', 'eteindre',
+    'stop', 'kill', 'close', 'exit'
+  ];
+
+  const hasOpenVerb = openVerbs.some((v) => lower.includes(v));
+  const hasCloseVerb = closeVerbs.some((v) => lower.includes(v));
+
+  // 1. WhatsApp Action (Rédiger / Envoyer message)
+  if (
+    lower.includes('whatsapp') &&
+    (lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') ||
+     lower.includes('message') || lower.includes('dis à') || lower.includes('dis a') ||
+     lower.includes('texte') || lower.includes(':'))
+  ) {
+    const contactMatch = message.match(/(?:à|a|pour)\s+([a-zA-Z0-9_\-\+]+)/i);
+    const contactName = contactMatch ? contactMatch[1].trim() : '';
+
+    let msgToSend = '';
+    if (message.includes(':')) {
+      msgToSend = message.split(':')[1]?.trim() || '';
+    } else if (lower.includes('disant que')) {
+      msgToSend = message.split(/disant que/i)[1]?.trim() || '';
+    } else if (lower.includes('pour lui dire')) {
+      msgToSend = message.split(/pour lui dire(?:\s+que)?/i)[1]?.trim() || '';
+    } else {
+      msgToSend = contactName ? `Salut ${contactName} ! Message rédigé depuis JARVIS.` : 'Bonjour ! Message envoyé depuis JARVIS Assistant.';
+    }
+
+    if (!msgToSend || msgToSend.length < 2) {
+      msgToSend = contactName ? `Salut ${contactName} !` : 'Bonjour !';
+    }
+
+    await sendWhatsAppMessage(msgToSend, contactName);
+    const target = contactName || 'votre contact';
+    return {
+      executed: true,
+      actionNote: `WhatsApp a été ouvert au premier plan sur l'écran avec le message prêt pour ${target} : "${msgToSend}".`,
+      directReply: `C'est fait Monsieur Roysten. WhatsApp est ouvert au premier plan avec votre message prêt pour ${target} : « ${msgToSend} ».`,
+      isPureCommand: true,
+    };
+  }
+
+  // 2. WhatsApp Simple (Ouvrir / Fermer)
+  if (lower.includes('whatsapp')) {
+    if (hasCloseVerb) {
+      await closeApp('whatsapp');
+      return {
+        executed: true,
+        actionNote: 'WhatsApp a été fermé.',
+        directReply: 'WhatsApp a été fermé, Monsieur.',
+        isPureCommand: true,
+      };
+    }
+    if (hasOpenVerb || lower === 'whatsapp' || lower === 'ouvre whatsapp' || lower === 'allume whatsapp') {
+      await launchApp('whatsapp');
+      return {
+        executed: true,
+        actionNote: 'WhatsApp Desktop a été ouvert au premier plan sur votre écran.',
+        directReply: 'WhatsApp Desktop est ouvert au premier plan sur votre écran, Monsieur.',
+        isPureCommand: true,
+      };
+    }
+  }
+
+  // 3. Visual Studio Code / ZCode / Projet
+  if (
+    lower.includes('vs code') ||
+    lower.includes('vscode') ||
+    lower.includes('zcode') ||
+    lower.includes('mon code') ||
+    lower === 'code' ||
+    ((hasOpenVerb || hasCloseVerb) && (lower.includes('code') || lower.includes('projet')))
+  ) {
+    if (hasCloseVerb) {
+      await closeApp('vscode');
+      return {
+        executed: true,
+        actionNote: 'Visual Studio Code a été fermé.',
+        directReply: 'Visual Studio Code a été fermé, Monsieur.',
+        isPureCommand: true,
+      };
+    }
+    await openVSCode();
+    return {
+      executed: true,
+      actionNote: 'Visual Studio Code a été lancé au premier plan sur votre écran avec le projet Jarvis.',
+      directReply: 'À vos ordres, Monsieur Roysten. Visual Studio Code est ouvert au premier plan sur votre écran avec le projet Jarvis.',
+      isPureCommand: true,
+    };
+  }
+
+  // 4. Spotify & Musique
+  if (
+    lower.includes('spotify') ||
+    (hasOpenVerb && (lower.includes('musique') || lower.includes('chanson') || lower.includes('morceau') || lower.includes('lofi') || lower.includes('afrobeat') || lower.includes('son')))
+  ) {
+    if (hasCloseVerb) {
+      await closeApp('spotify');
+      return {
+        executed: true,
+        actionNote: 'Spotify a été arrêté.',
+        directReply: 'Spotify a été arrêté, Monsieur.',
+        isPureCommand: true,
+      };
+    }
+    let query = '';
+    const match = message.match(/(?:mets|joue|lance|cherche)\s+(?:de\s+la\s+musique|du|de|des)?\s*(.*?)(?:\s+sur\s+spotify|$)/i);
+    if (match && match[1] && !match[1].toLowerCase().includes('musique')) {
+      query = match[1].trim();
+    }
+    await playSpotify(query);
+    return {
+      executed: true,
+      actionNote: query
+        ? `Spotify a été lancé et recherche "${query}" pour lecture immédiate.`
+        : `Spotify a été lancé au premier plan sur votre écran.`,
+      directReply: query
+        ? `Tout de suite Monsieur. Spotify est activé au premier plan avec « ${query} ».`
+        : `Très bien Monsieur Roysten, Spotify est lancé au premier plan sur votre écran.`,
+      isPureCommand: true,
+    };
+  }
+
+  // 5. Canva
+  if (lower.includes('canva')) {
+    if (hasCloseVerb) {
+      await closeApp('canva');
+      return { executed: true, actionNote: 'Canva a été fermé.', directReply: 'Canva a été fermé, Monsieur.', isPureCommand: true };
+    }
+    await launchApp('canva');
+    return {
+      executed: true,
+      actionNote: 'Canva a été ouvert au premier plan sur votre écran.',
+      directReply: 'Canva est ouvert au premier plan sur votre écran, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  // 6. CapCut
+  if (lower.includes('capcut') || lower.includes('cap cut')) {
+    if (hasCloseVerb) {
+      await closeApp('capcut');
+      return { executed: true, actionNote: 'CapCut a été fermé.', directReply: 'CapCut a été fermé, Monsieur.', isPureCommand: true };
+    }
+    await launchApp('capcut');
+    return {
+      executed: true,
+      actionNote: 'CapCut a été ouvert au premier plan sur votre écran.',
+      directReply: 'CapCut est lancé au premier plan sur votre écran pour vos montages, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  // 7. Suite Office (Word, Excel, PowerPoint)
+  if (lower.includes('word') || lower.includes('winword') || lower.includes('traitement de texte')) {
+    if (hasCloseVerb) {
+      await closeApp('word');
+      return { executed: true, actionNote: 'Word a été fermé.', directReply: 'Microsoft Word a été fermé, Monsieur.', isPureCommand: true };
+    }
+    await launchApp('word');
+    return {
+      executed: true,
+      actionNote: 'Microsoft Word a été ouvert au premier plan sur votre écran.',
+      directReply: 'Microsoft Word est ouvert au premier plan, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  if (lower.includes('excel') || lower.includes('tableur')) {
+    if (hasCloseVerb) {
+      await closeApp('excel');
+      return { executed: true, actionNote: 'Excel a été fermé.', directReply: 'Microsoft Excel a été fermé, Monsieur.', isPureCommand: true };
+    }
+    await launchApp('excel');
+    return {
+      executed: true,
+      actionNote: 'Microsoft Excel a été ouvert au premier plan sur votre écran.',
+      directReply: 'Microsoft Excel est ouvert au premier plan, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  if (lower.includes('powerpoint') || lower.includes('power point') || lower.includes('diaporama') || lower.includes('slide')) {
+    if (hasCloseVerb) {
+      await closeApp('powerpoint');
+      return { executed: true, actionNote: 'PowerPoint a été fermé.', directReply: 'PowerPoint a été fermé, Monsieur.', isPureCommand: true };
+    }
+    await launchApp('powerpoint');
+    return {
+      executed: true,
+      actionNote: 'Microsoft PowerPoint a été ouvert au premier plan sur votre écran.',
+      directReply: 'Microsoft PowerPoint est ouvert au premier plan, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  // 8. YouTube & Google Search
+  if (lower.includes('youtube')) {
+    const match = message.match(/cherche\s+(.*?)\s+sur\s+youtube/i) || message.match(/sur\s+youtube\s+(.*)/i);
+    const query = match ? match[1].trim() : '';
+    if (query) {
+      await searchYouTube(query);
+      return {
+        executed: true,
+        actionNote: `YouTube a été ouvert avec la recherche : "${query}".`,
+        directReply: `J'ai ouvert YouTube avec votre recherche « ${query} », Monsieur.`,
+        isPureCommand: true,
+      };
+    }
+    if (hasOpenVerb || lower === 'youtube') {
+      await openUrl('https://youtube.com');
+      return {
+        executed: true,
+        actionNote: 'YouTube a été ouvert dans votre navigateur.',
+        directReply: 'YouTube est ouvert dans votre navigateur, Monsieur.',
+        isPureCommand: true,
+      };
+    }
+  }
+
+  if (lower.includes('google') && (lower.includes('cherche') || lower.includes('trouve'))) {
+    const match = message.match(/cherche\s+(.*?)\s+sur\s+google/i);
+    const query = match ? match[1].trim() : '';
+    await searchGoogle(query);
+    return {
+      executed: true,
+      actionNote: `Google a été ouvert avec la recherche : "${query}".`,
+      directReply: `Google Chrome est ouvert avec votre recherche « ${query} », Monsieur.`,
+      isPureCommand: true,
+    };
+  }
+
+  // 9. Chrome / Navigateur
+  if (lower.includes('chrome') || (hasOpenVerb && (lower.includes('navigateur') || lower.includes('internet')))) {
+    if (hasCloseVerb) {
+      await closeApp('chrome');
+      return { executed: true, actionNote: 'Google Chrome a été fermé.', directReply: 'Google Chrome a été fermé, Monsieur.', isPureCommand: true };
+    }
+    await launchApp('chrome');
+    return {
+      executed: true,
+      actionNote: 'Google Chrome a été lancé au premier plan.',
+      directReply: 'Google Chrome est ouvert au premier plan, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  // 10. Explorateur de fichiers
+  if (lower.includes('explorateur') || lower.includes('mes documents') || lower.includes('dossier')) {
+    await launchApp('explorer');
+    return {
+      executed: true,
+      actionNote: "L'explorateur de fichiers a été ouvert.",
+      directReply: "L'explorateur de fichiers est ouvert, Monsieur.",
+      isPureCommand: true,
+    };
+  }
+
+  // 11. Terminal
+  if (lower.includes('terminal') || lower.includes('powershell') || lower.includes('console')) {
+    await launchApp('terminal');
+    return {
+      executed: true,
+      actionNote: 'Le terminal PowerShell a été ouvert sur votre écran.',
+      directReply: 'Le terminal PowerShell est ouvert sur votre écran, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  return { executed: false };
+}
+
