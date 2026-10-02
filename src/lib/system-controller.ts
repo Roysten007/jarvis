@@ -48,6 +48,21 @@ export function launchForeground(
   });
 }
 
+// Copier du texte dans le presse-papier Windows
+export function copyToClipboard(text: string): boolean {
+  try {
+    const escaped = text.replace(/'/g, "''");
+    const p = spawn('powershell.exe', ['-NoProfile', '-Command', `Set-Clipboard -Value '${escaped}'`], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    p.unref();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Action WhatsApp : Rédiger ou envoyer un message directement
 export async function sendWhatsAppMessage(
   messageText: string,
@@ -56,24 +71,31 @@ export async function sendWhatsAppMessage(
   const text = messageText.trim();
   const encoded = encodeURIComponent(text);
 
+  // Copier le texte dans le presse-papier Windows
+  copyToClipboard(text);
+
   // Si un numéro est détecté (+229..., 00229...)
   const cleanPhone = contactOrPhone?.replace(/[^0-9]/g, '');
   if (cleanPhone && cleanPhone.length >= 8) {
     return launchForeground(`whatsapp://send?phone=${cleanPhone}&text=${encoded}`, [], ['WhatsApp']);
   }
 
+  // Ouvrir WhatsApp Desktop natif avec le message prêt
   return launchForeground(`whatsapp://send?text=${encoded}`, [], ['WhatsApp']);
 }
 
-// Action Spotify : Lancer Spotify et rechercher/jouer un morceau ou artiste
+// Action Spotify : Lancer l'application native Spotify au premier plan
 export async function playSpotify(query?: string): Promise<{ success: boolean; message: string }> {
   if (query && query.trim()) {
     const enc = encodeURIComponent(query.trim());
-    launchForeground(`spotify:search:${enc}`, [], ['Spotify']);
-    return openUrl(`https://open.spotify.com/search/${enc}`);
+    return launchForeground(`spotify:search:${enc}`, [], ['Spotify']);
   }
-  launchForeground('shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', [], ['Spotify']);
-  return openUrl('https://open.spotify.com');
+  // Lancement direct de l'application native Spotify Windows
+  const res = await launchForeground('spotify:', [], ['Spotify']);
+  if (!res.success) {
+    return launchForeground('shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', [], ['Spotify']);
+  }
+  return res;
 }
 
 // Action VS Code : Ouvrir un projet ou fichier au premier plan
@@ -379,17 +401,11 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
 
     await sendWhatsAppMessage(msgToSend, contactName);
     const target = contactName || 'votre contact';
-    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msgToSend)}`;
     return {
       executed: true,
-      actionNote: `WhatsApp a été ouvert avec le message prêt pour ${target} : "${msgToSend}".`,
-      directReply: `C'est fait Monsieur Roysten. WhatsApp est ouvert avec votre message prêt pour ${target} : « ${msgToSend} ».\n\n👉 [💬 Ouvrir la discussion WhatsApp](${waUrl})`,
+      actionNote: `L'application native WhatsApp a été ouverte sur votre écran avec le message pour ${target} : "${msgToSend}". Le texte a également été copié dans votre presse-papier.`,
+      directReply: `C'est fait Monsieur Roysten. L'application WhatsApp est lancée sur votre écran avec votre message prêt pour ${target} :\n\n« ${msgToSend} »\n\n📋 *Le texte est également copié dans votre presse-papier Windows.*`,
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: waUrl,
-        label: 'Ouvrir WhatsApp',
-      },
     };
   }
 
@@ -406,17 +422,11 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     }
     if (hasOpenVerb || lower === 'whatsapp' || lower === 'ouvre whatsapp' || lower === 'allume whatsapp') {
       await launchApp('whatsapp');
-      const waUrl = 'https://web.whatsapp.com';
       return {
         executed: true,
-        actionNote: 'WhatsApp a été ouvert sur votre écran.',
-        directReply: `WhatsApp est ouvert sur votre écran, Monsieur.\n\n👉 [💬 Ouvrir WhatsApp Web](${waUrl})`,
+        actionNote: 'WhatsApp Desktop a été ouvert directement au premier plan sur votre écran.',
+        directReply: 'WhatsApp Desktop est ouvert directement sur votre bureau Windows, Monsieur.',
         isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: waUrl,
-          label: 'Ouvrir WhatsApp',
-        },
       };
     }
   }
@@ -440,21 +450,15 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       };
     }
     await openVSCode();
-    const vsCodeUri = 'vscode://file/c:/Users/ADMIN/Documents/Jarvis';
     return {
       executed: true,
       actionNote: 'Visual Studio Code a été lancé au premier plan sur votre écran avec le projet Jarvis.',
-      directReply: `À vos ordres, Monsieur Roysten. Visual Studio Code est ouvert au premier plan sur votre écran avec le projet Jarvis.\n\n👉 [💻 Basculer sur VS Code](${vsCodeUri})`,
+      directReply: 'À vos ordres, Monsieur Roysten. Visual Studio Code est ouvert au premier plan sur votre écran avec le projet Jarvis.',
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: vsCodeUri,
-        label: 'Basculer sur VS Code',
-      },
     };
   }
 
-  // 4. Spotify & Musique
+  // 4. Spotify & Musique (LANCEMENT NOUVEAU : Application native Windows UNIQUEMENT)
   if (
     lower.includes('spotify') ||
     (hasOpenVerb && (lower.includes('musique') || lower.includes('chanson') || lower.includes('morceau') || lower.includes('lofi') || lower.includes('afrobeat') || lower.includes('son')))
@@ -474,64 +478,172 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       query = match[1].trim();
     }
     await playSpotify(query);
-    const spotifyUrl = query
-      ? `https://open.spotify.com/search/${encodeURIComponent(query)}`
-      : 'https://open.spotify.com';
     return {
       executed: true,
       actionNote: query
-        ? `Spotify a été lancé et recherche "${query}" pour lecture immédiate.`
-        : `Spotify a été lancé au premier plan sur votre écran.`,
+        ? `L'application native Spotify a été activée avec recherche « ${query} ».`
+        : `L'application native Spotify a été lancée sur votre écran Windows.`,
       directReply: query
-        ? `Tout de suite Monsieur. Spotify est activé avec « ${query} ».\n\n👉 [🎵 Écouter sur Spotify Web](${spotifyUrl})`
-        : `Très bien Monsieur Roysten, Spotify est activé sur votre écran.\n\n👉 [🎵 Ouvrir le lecteur Spotify](${spotifyUrl})`,
+        ? `Tout de suite Monsieur. L'application Spotify a été lancée directement sur votre PC avec « ${query} ».`
+        : `Très bien Monsieur Roysten, l'application native Spotify est activée sur votre écran.`,
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: spotifyUrl,
-        label: 'Ouvrir Spotify',
-      },
     };
   }
 
-  // 5. Canva
+  // 5. Canva (Application native bureau)
   if (lower.includes('canva')) {
     if (hasCloseVerb) {
       await closeApp('canva');
       return { executed: true, actionNote: 'Canva a été fermé.', directReply: 'Canva a été fermé, Monsieur.', isPureCommand: true };
     }
     await launchApp('canva');
-    const canvaUrl = 'https://www.canva.com';
     return {
       executed: true,
       actionNote: 'Canva a été ouvert sur votre écran.',
-      directReply: `Canva est ouvert sur votre écran, Monsieur.\n\n👉 [🎨 Accéder à Canva](${canvaUrl})`,
+      directReply: 'Canva a été lancé sur votre écran, Monsieur.',
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: canvaUrl,
-        label: 'Ouvrir Canva',
-      },
     };
   }
 
-  // 6. CapCut
+  // 6. CapCut (Application native bureau)
   if (lower.includes('capcut') || lower.includes('cap cut')) {
     if (hasCloseVerb) {
       await closeApp('capcut');
       return { executed: true, actionNote: 'CapCut a été fermé.', directReply: 'CapCut a été fermé, Monsieur.', isPureCommand: true };
     }
     await launchApp('capcut');
-    const capcutUrl = 'https://www.capcut.com/editor';
     return {
       executed: true,
       actionNote: 'CapCut a été ouvert au premier plan sur votre écran.',
-      directReply: `CapCut est lancé au premier plan sur votre écran pour vos montages, Monsieur.\n\n👉 [🎬 Accéder à CapCut](${capcutUrl})`,
+      directReply: 'CapCut est lancé au premier plan sur votre écran pour vos montages, Monsieur.',
+      isPureCommand: true,
+    };
+  }
+
+  // === NOUVEAU MODULE : RÉSEAUX SOCIAUX & WEB AUTOMATION ===
+
+  // A. Facebook (Post ou Commentaire)
+  if (
+    lower.includes('facebook') &&
+    (lower.includes('post') || lower.includes('poste') || lower.includes('publie') || lower.includes('statut') ||
+     lower.includes('écris') || lower.includes('ecris') || lower.includes('commente') || lower.includes('commentaire'))
+  ) {
+    const isComment = lower.includes('commente') || lower.includes('commentaire');
+    const { generateSocialContent } = await import('@/lib/social-controller');
+    const topic = message.replace(/.*(?:facebook|post|poste|publie|commente|statut)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Tech et Intelligence Artificielle au Bénin';
+    const result = await generateSocialContent('facebook', isComment ? 'comment' : 'post', topic);
+    return {
+      executed: true,
+      actionNote: `Publication Facebook rédigée et copiée dans le presse-papier Windows. Facebook ouvert au premier plan.`,
+      directReply: `Monsieur Roysten, voici votre publication Facebook rédigée avec soin :\n\n${result.content}\n\n📋 **Le texte a été copié automatiquement dans votre presse-papier Windows.**\n👉 L'interface Facebook est ouverte, collez avec **Ctrl + V** pour publier !\n\n[🌐 Ouvrir Facebook](${result.actionUrl})`,
       isPureCommand: true,
       clientAction: {
         type: 'open_url',
-        url: capcutUrl,
-        label: 'Ouvrir CapCut',
+        url: result.actionUrl,
+        label: 'Ouvrir Facebook',
+      },
+    };
+  }
+
+  // B. Twitter / X (Tweet ou Réponse)
+  if (
+    (lower.includes('twitter') || lower.includes('tweet') || lower.includes('sur x') || lower.includes('sur twitter')) &&
+    (lower.includes('post') || lower.includes('tweet') || lower.includes('écris') || lower.includes('ecris') ||
+     lower.includes('publie') || lower.includes('commente') || lower.includes('réponds') || lower.includes('reponds'))
+  ) {
+    const isComment = lower.includes('commente') || lower.includes('réponse') || lower.includes('réponds');
+    const { generateSocialContent } = await import('@/lib/social-controller');
+    const topic = message.replace(/.*(?:twitter|tweet|sur x|sur twitter|post|poste|publie|commente)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Vibe coding et intelligence artificielle';
+    const result = await generateSocialContent('twitter', isComment ? 'comment' : 'post', topic);
+    return {
+      executed: true,
+      actionNote: `Tweet rédigé et interface de publication X (Twitter) ouverte avec le texte prérempli.`,
+      directReply: `Voici le tweet rédigé pour vous, Monsieur Roysten :\n\n« ${result.content} »\n\n🚀 **La fenêtre X (Twitter) est ouverte avec votre tweet déjà inscrit, prêt à être posté en un clic !**\n\n👉 [🐦 Publier sur X (Twitter)](${result.actionUrl})`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: result.actionUrl,
+        label: 'Publier sur X',
+      },
+    };
+  }
+
+  // C. LinkedIn (Post ou Commentaire)
+  if (
+    lower.includes('linkedin') &&
+    (lower.includes('post') || lower.includes('poste') || lower.includes('écris') || lower.includes('ecris') ||
+     lower.includes('publie') || lower.includes('commente') || lower.includes('article'))
+  ) {
+    const isComment = lower.includes('commente') || lower.includes('commentaire');
+    const { generateSocialContent } = await import('@/lib/social-controller');
+    const topic = message.replace(/.*(?:linkedin|post|poste|publie|commente)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Retour d\'expérience tech, études et vibe coding';
+    const result = await generateSocialContent('linkedin', isComment ? 'comment' : 'post', topic);
+    return {
+      executed: true,
+      actionNote: `Publication LinkedIn rédigée et copiée dans le presse-papier Windows.`,
+      directReply: `Monsieur Roysten, voici votre publication LinkedIn professionnelle :\n\n${result.content}\n\n📋 **Le texte a été copié dans votre presse-papier Windows.**\n👉 LinkedIn est ouvert au premier plan, collez (**Ctrl + V**) pour publier !\n\n[💼 Accéder à LinkedIn](${result.actionUrl})`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: result.actionUrl,
+        label: 'Ouvrir LinkedIn',
+      },
+    };
+  }
+
+  // D. Instagram (Légende ou Post)
+  if (
+    lower.includes('instagram') &&
+    (lower.includes('post') || lower.includes('légende') || lower.includes('legende') || lower.includes('caption') ||
+     lower.includes('photo') || lower.includes('publie') || lower.includes('reel'))
+  ) {
+    const { generateSocialContent } = await import('@/lib/social-controller');
+    const topic = message.replace(/.*(?:instagram|post|légende|legende|caption|photo)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Création digitale et lifestyle développeur';
+    const result = await generateSocialContent('instagram', 'post', topic);
+    return {
+      executed: true,
+      actionNote: `Légende Instagram rédigée et copiée dans le presse-papier Windows.`,
+      directReply: `Voici votre légende Instagram optimisée, Monsieur :\n\n${result.content}\n\n📋 **Copiée dans votre presse-papier.** Instagram est ouvert pour votre publication.\n\n[📸 Accéder à Instagram](${result.actionUrl})`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: result.actionUrl,
+        label: 'Ouvrir Instagram',
+      },
+    };
+  }
+
+  // E. Navigation Web Directe (navigue sur..., va sur..., ouvre le site...)
+  if (
+    lower.startsWith('navigue sur') ||
+    lower.startsWith('va sur') ||
+    lower.startsWith('ouvre le site') ||
+    lower.startsWith('consulte') ||
+    lower.startsWith('visite')
+  ) {
+    const rawTarget = message.replace(/^(?:navigue sur|va sur|ouvre le site|consulte|visite)\s+/i, '').trim();
+    let targetUrl = rawTarget;
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      const lowerTarget = rawTarget.toLowerCase();
+      if (lowerTarget === 'facebook') targetUrl = 'https://www.facebook.com';
+      else if (lowerTarget === 'youtube') targetUrl = 'https://www.youtube.com';
+      else if (lowerTarget === 'instagram') targetUrl = 'https://www.instagram.com';
+      else if (lowerTarget === 'twitter' || lowerTarget === 'x') targetUrl = 'https://x.com';
+      else if (lowerTarget === 'linkedin') targetUrl = 'https://www.linkedin.com';
+      else if (lowerTarget === 'github') targetUrl = 'https://github.com';
+      else if (lowerTarget.includes('.')) targetUrl = `https://${rawTarget}`;
+      else targetUrl = `https://www.google.com/search?q=${encodeURIComponent(rawTarget)}`;
+    }
+    await openUrl(targetUrl);
+    return {
+      executed: true,
+      actionNote: `Navigation vers ${targetUrl} dans le navigateur.`,
+      directReply: `Navigation en cours vers ${targetUrl}, Monsieur Roysten.\n\n👉 [🌐 Ouvrir le site](${targetUrl})`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: targetUrl,
+        label: 'Accéder au site',
       },
     };
   }
