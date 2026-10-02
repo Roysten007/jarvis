@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Brain,
   Zap,
+  Monitor,
   GraduationCap,
   TrendingUp,
   Share2,
@@ -17,6 +18,7 @@ export type NavTab =
   | 'chat'
   | 'memory'
   | 'agent'
+  | 'system'
   | 'study'
   | 'prospection'
   | 'social'
@@ -31,6 +33,7 @@ interface NavigationProps {
 
 const TABS = [
   { id: 'chat' as NavTab, label: 'Terminal', icon: MessageSquare },
+  { id: 'system' as NavTab, label: 'Pilote PC', icon: Monitor },
   { id: 'memory' as NavTab, label: 'Mémoire', icon: Brain },
   { id: 'agent' as NavTab, label: 'Agent ReAct', icon: Zap },
   { id: 'study' as NavTab, label: 'Études', icon: GraduationCap },

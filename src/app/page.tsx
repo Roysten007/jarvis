@@ -10,6 +10,7 @@ import { AgentView } from '@/components/views/AgentView';
 import { StudyView } from '@/components/views/StudyView';
 import { ProspectionView } from '@/components/views/ProspectionView';
 import { SocialMediaView } from '@/components/views/SocialMediaView';
+import { SystemControlView } from '@/components/views/SystemControlView';
 import { EnglishView } from '@/components/views/EnglishView';
 import { TasksView } from '@/components/views/TasksView';
 import { SettingsView } from '@/components/views/SettingsView';
@@ -223,6 +224,7 @@ export default function JarvisDashboard() {
           )}
 
           {activeTab === 'memory' && <MemoryView />}
+          {activeTab === 'system' && <SystemControlView />}
           {activeTab === 'agent' && <AgentView />}
           {activeTab === 'study' && <StudyView />}
           {activeTab === 'prospection' && <ProspectionView />}

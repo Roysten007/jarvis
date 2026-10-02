@@ -207,4 +207,68 @@ export const TOOLS_REGISTRY: Record<string, ToolDefinition> = {
       };
     },
   },
+
+  // PILOTAGE DE L'ORDINATEUR (SYSTÈME WINDOWS)
+  launch_app: {
+    name: 'launch_app',
+    description: 'Lance une application installée sur l\'ordinateur de Roysten (VS Code, Chrome, Bloc-notes, Calculatrice, Explorateur de fichiers, Spotify, etc.)',
+    parameters: {
+      type: 'object',
+      properties: {
+        appName: { type: 'string', description: 'Nom de l\'application (ex: "vscode", "chrome", "calc", "notepad", "explorer")' },
+        targetPath: { type: 'string', description: 'Fichier ou dossier cible à ouvrir avec l\'application (optionnel)' },
+      },
+      required: ['appName'],
+    },
+    execute: async (args) => {
+      const { launchApp } = await import('./system-controller');
+      return await launchApp(args.appName, args.targetPath);
+    },
+  },
+
+  open_url_on_pc: {
+    name: 'open_url_on_pc',
+    description: 'Ouvre un site web ou une URL directement dans le navigateur de l\'ordinateur.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'L\'URL complète à ouvrir (ex: "https://youtube.com", "https://github.com")' },
+      },
+      required: ['url'],
+    },
+    execute: async (args) => {
+      const { openUrl } = await import('./system-controller');
+      return await openUrl(args.url);
+    },
+  },
+
+  get_pc_telemetry: {
+    name: 'get_pc_telemetry',
+    description: 'Récupère les statistiques matérielles de l\'ordinateur en temps réel (mémoire RAM utilisée/libre, processeur, état du système).',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+    execute: async () => {
+      const { getSystemStats } = await import('./system-controller');
+      return getSystemStats();
+    },
+  },
+
+  browse_local_folder: {
+    name: 'browse_local_folder',
+    description: 'Inspecte et liste les fichiers d\'un dossier sur l\'ordinateur de Roysten.',
+    parameters: {
+      type: 'object',
+      properties: {
+        folderPath: { type: 'string', description: 'Chemin du dossier (laisser vide pour le dossier Documents)' },
+      },
+      required: [],
+    },
+    execute: async (args) => {
+      const { inspectDirectory } = await import('./system-controller');
+      return inspectDirectory(args.folderPath);
+    },
+  },
 };
