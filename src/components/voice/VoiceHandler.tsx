@@ -26,14 +26,28 @@ export function VoiceHandler({
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
   // Paramètres vocaux personnalisables
+  const [voiceLang, setVoiceLang] = useState<'fr' | 'en'>('fr');
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>('');
   const [pitch, setPitch] = useState<number>(0.92); // Ton élégant et posé
   const [rate, setRate] = useState<number>(1.05); // Débit fluide
+  const [playVoiceOnWake, setPlayVoiceOnWake] = useState<boolean>(false);
 
   const recognitionRef = useRef<any>(null);
   const speechQueueRef = useRef<string[]>([]);
   const isPlayingQueueRef = useRef<boolean>(false);
+
+  // Charger la langue et options sauvegardées
+  useEffect(() => {
+    const savedLang = localStorage.getItem('jarvis_voice_lang');
+    if (savedLang === 'fr' || savedLang === 'en') {
+      setVoiceLang(savedLang);
+    }
+    const savedWake = localStorage.getItem('jarvis_voice_on_wake');
+    if (savedWake === 'true') {
+      setPlayVoiceOnWake(true);
+    }
+  }, []);
 
   // Charger les voix disponibles dans le système
   useEffect(() => {
@@ -44,26 +58,22 @@ export function VoiceHandler({
       if (available.length > 0) {
         setVoices(available);
 
-        // Récupérer la voix sauvegardée ou chercher la meilleure voix française
+        // Récupérer la voix sauvegardée ou chercher la meilleure voix selon la langue
         const savedVoice = localStorage.getItem('jarvis_voice_name');
-        const frVoices = available.filter((v) => v.lang.toLowerCase().startsWith('fr'));
+        const langVoices = available.filter((v) => v.lang.toLowerCase().startsWith(voiceLang));
 
-        if (savedVoice && frVoices.some((v) => v.name === savedVoice)) {
+        if (savedVoice && langVoices.some((v) => v.name === savedVoice)) {
           setSelectedVoiceName(savedVoice);
-        } else if (frVoices.length > 0) {
-          // Priorité aux voix françaises naturelles (Henri, Denise, Paul, Thomas, Google, etc.)
+        } else if (langVoices.length > 0) {
           const preferred =
-            frVoices.find((v) => /natural|online|henri|denise|paul|thomas|google|hortense/i.test(v.name)) ||
-            frVoices[0];
+            langVoices.find((v) => /natural|online|henri|denise|paul|thomas|guy|google|jenny/i.test(v.name)) ||
+            langVoices[0];
 
           if (preferred) {
             setSelectedVoiceName(preferred.name);
-            localStorage.setItem('jarvis_voice_name', preferred.name);
           }
         } else {
-          // Aucune voix française locale détectée : laisser le navigateur utiliser sa voix française native fr-FR
           setSelectedVoiceName('');
-          localStorage.removeItem('jarvis_voice_name');
         }
       }
     };
@@ -77,7 +87,7 @@ export function VoiceHandler({
 
     const savedRate = localStorage.getItem('jarvis_voice_rate');
     if (savedRate) setRate(parseFloat(savedRate));
-  }, []);
+  }, [voiceLang]);
 
   // Initialisation de la reconnaissance vocale Web Speech
   useEffect(() => {
@@ -88,7 +98,7 @@ export function VoiceHandler({
       if (SpeechRecognition) {
         setSpeechSupported(true);
         const recognition = new SpeechRecognition();
-        recognition.lang = 'fr-FR';
+        recognition.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
         recognition.continuous = false;
         recognition.interimResults = false;
 
@@ -112,7 +122,13 @@ export function VoiceHandler({
         recognitionRef.current = recognition;
       }
     }
-  }, [onSpeechResult, setIsListening]);
+  }, [onSpeechResult, setIsListening, voiceLang]);
+
+  // Lecture de la voix personnalisée (voix.mp3)
+  const playCustomVoiceSample = () => {
+    const audio = new Audio('/voix.mp3');
+    audio.play().catch((err) => console.warn('Erreur lecture /voix.mp3:', err));
+  };
 
   // File d'attente vocale phrase par phrase (Streaming TTS sans latence)
   const processSpeechQueue = useCallback(() => {
@@ -126,13 +142,13 @@ export function VoiceHandler({
     setIsSpeaking(true);
 
     const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.lang = 'fr-FR';
+    utterance.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
     utterance.rate = rate;
     utterance.pitch = pitch;
 
     if (selectedVoiceName) {
       const voiceObj = voices.find(
-        (v) => v.name === selectedVoiceName && v.lang.toLowerCase().startsWith('fr')
+        (v) => v.name === selectedVoiceName && v.lang.toLowerCase().startsWith(voiceLang)
       );
       if (voiceObj) utterance.voice = voiceObj;
     }
@@ -162,7 +178,7 @@ export function VoiceHandler({
     };
 
     window.speechSynthesis.speak(utterance);
-  }, [rate, pitch, selectedVoiceName, voices, handsFree, setIsListening]);
+  }, [rate, pitch, selectedVoiceName, voices, handsFree, setIsListening, voiceLang]);
 
   // Ajouter un fragment textuel à la file de parole
   const queueSpeech = useCallback(
@@ -213,7 +229,7 @@ export function VoiceHandler({
 
         if (SpeechRecognition) {
           const rec = new SpeechRecognition();
-          rec.lang = 'fr-FR';
+          rec.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
           rec.continuous = false;
           rec.interimResults = false;
           rec.onresult = (ev: any) => {
@@ -228,7 +244,11 @@ export function VoiceHandler({
           recognitionRef.current = rec;
           setSpeechSupported(true);
           try {
-            playMicOpen();
+            if (playVoiceOnWake) {
+              playCustomVoiceSample();
+            } else {
+              playMicOpen();
+            }
             rec.start();
             setIsListening(true);
             return;
@@ -244,7 +264,11 @@ export function VoiceHandler({
       }
 
       try {
-        playMicOpen();
+        if (playVoiceOnWake) {
+          playCustomVoiceSample();
+        } else {
+          playMicOpen();
+        }
         recognitionRef.current?.start();
         setIsListening(true);
       } catch (e) {
@@ -299,6 +323,24 @@ export function VoiceHandler({
             <span className="text-[11px] hidden sm:inline">Micro</span>
           </>
         )}
+      </button>
+
+      {/* Bascule Rapide Langue Vocale (Français / Anglais pour apprentissage) */}
+      <button
+        type="button"
+        onClick={() => {
+          const next = voiceLang === 'fr' ? 'en' : 'fr';
+          setVoiceLang(next);
+          localStorage.setItem('jarvis_voice_lang', next);
+        }}
+        title="Basculer la langue vocale : Français ou Anglais (pour pratiquer)"
+        className={`px-2 py-2 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1 ${
+          voiceLang === 'en'
+            ? 'bg-indigo-500/25 border-indigo-400 text-indigo-300 shadow-hud-indigo animate-pulse'
+            : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300 hover:border-cyan-400'
+        }`}
+      >
+        <span>{voiceLang === 'fr' ? '🇫🇷 FR' : '🇬🇧 EN'}</span>
       </button>
 
       {/* Mode Mains Libres */}
@@ -359,17 +401,95 @@ export function VoiceHandler({
             </button>
           </div>
 
-          {/* Choix de la voix (Français uniquement) */}
+          {/* Fichier voix.mp3 détecté */}
+          <div className="bg-[#091024] border border-cyan-500/30 rounded p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-cyan-400" />
+                <span>Empreinte : voix.mp3</span>
+              </span>
+              <span className="text-[10px] text-emerald-400 font-bold">✓ Chargé</span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-sans">
+              Votre fichier <code>voix.mp3</code> est prêt.
+            </p>
+            <div className="flex gap-1.5 pt-0.5">
+              <button
+                type="button"
+                onClick={playCustomVoiceSample}
+                className="flex-1 py-1 bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 rounded hover:bg-cyan-500/30 text-[11px] font-bold flex items-center justify-center gap-1.5"
+              >
+                <Play className="w-3 h-3 text-cyan-400" />
+                <span>Écouter</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !playVoiceOnWake;
+                  setPlayVoiceOnWake(next);
+                  localStorage.setItem('jarvis_voice_on_wake', String(next));
+                  if (next) playCustomVoiceSample();
+                }}
+                title="Jouer voix.mp3 quand vous appuyez sur le micro"
+                className={`flex-1 py-1 rounded text-[10px] font-bold border transition-all ${
+                  playVoiceOnWake
+                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-300 shadow-hud-emerald'
+                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {playVoiceOnWake ? 'Au réveil : OUI ✓' : 'Au réveil : NON'}
+              </button>
+            </div>
+          </div>
+
+          {/* Choix de la langue vocale */}
           <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Voix de synthèse (100% Français) :</label>
+            <label className="text-[10px] text-slate-400 block mb-1">Langue de l'interaction :</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setVoiceLang('fr');
+                  localStorage.setItem('jarvis_voice_lang', 'fr');
+                }}
+                className={`py-1 rounded text-xs font-bold border ${
+                  voiceLang === 'fr'
+                    ? 'bg-cyan-500/25 border-cyan-400 text-cyan-300 shadow-hud-cyan'
+                    : 'bg-slate-900 border-slate-700 text-slate-400'
+                }`}
+              >
+                🇫🇷 Français (Défaut)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setVoiceLang('en');
+                  localStorage.setItem('jarvis_voice_lang', 'en');
+                }}
+                className={`py-1 rounded text-xs font-bold border ${
+                  voiceLang === 'en'
+                    ? 'bg-indigo-500/25 border-indigo-400 text-indigo-300 shadow-hud-indigo'
+                    : 'bg-slate-900 border-slate-700 text-slate-400'
+                }`}
+              >
+                🇬🇧 English (Learning)
+              </button>
+            </div>
+          </div>
+
+          {/* Choix de la voix */}
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-1">
+              Voix de synthèse ({voiceLang === 'fr' ? 'Français' : 'English'}) :
+            </label>
             <select
               value={selectedVoiceName}
               onChange={(e) => setSelectedVoiceName(e.target.value)}
               className="w-full bg-[#0c1427] border border-cyan-500/30 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-cyan-400"
             >
-              <option value="">Voix Française standard du système</option>
+              <option value="">Voix standard du navigateur</option>
               {voices
-                .filter((v) => v.lang.toLowerCase().startsWith('fr'))
+                .filter((v) => v.lang.toLowerCase().startsWith(voiceLang))
                 .map((v) => (
                   <option key={v.name} value={v.name}>
                     {v.name} ({v.lang})
@@ -428,7 +548,7 @@ export function VoiceHandler({
               className="px-2.5 py-1 bg-slate-900 border border-slate-700 text-slate-300 rounded hover:border-cyan-400 hover:text-cyan-300 text-[11px] flex items-center gap-1"
             >
               <Play className="w-3 h-3 text-cyan-400" />
-              <span>Tester</span>
+              <span>Tester synthèse</span>
             </button>
             <button
               type="button"

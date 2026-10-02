@@ -3,23 +3,24 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
-// Exécution d'une application ou URL en processus Windows détaché
-export function launchDetached(target: string, args: string[] = []): Promise<{ success: boolean; message: string }> {
+// Exécution directe d'un processus Windows sans intermédiaire cmd.exe
+export function launchDirect(target: string, args: string[] = []): Promise<{ success: boolean; message: string }> {
   return new Promise((resolve) => {
     try {
-      const fullArgs = ['/c', 'start', '', target, ...args];
-      const p = spawn('cmd.exe', fullArgs, {
+      const p = spawn(target, args, {
         detached: true,
         stdio: 'ignore',
         windowsHide: false,
       });
       p.unref();
-      resolve({ success: true, message: `Lancé avec succès : ${target}` });
+      resolve({ success: true, message: `Lancé avec succès (PID: ${p.pid}) : ${target}` });
     } catch (err: any) {
       resolve({ success: false, message: `Erreur de lancement : ${err.message}` });
     }
   });
 }
+
+export const launchDetached = launchDirect;
 
 // Chemins d'exécutables vérifiés sur Windows
 const KNOWN_PATHS = {
@@ -59,87 +60,81 @@ function findExistingExe(paths: string[]): string | null {
 export async function launchApp(appName: string, targetPath?: string): Promise<{ success: boolean; message: string }> {
   const name = appName.toLowerCase().trim();
 
-  // Visual Studio Code
+  // Visual Studio Code (avec -n pour forcer l'ouverture d'une nouvelle fenêtre visible sur l'écran)
   if (name.includes('code') || name.includes('vs')) {
+    const proj = targetPath || 'c:\\Users\\ADMIN\\Documents\\Jarvis';
     const p = findExistingExe(KNOWN_PATHS.vscode);
-    return p ? launchDetached(p, targetPath ? [targetPath] : []) : launchDetached('code', targetPath ? [targetPath] : []);
+    if (p) {
+      return launchDirect(p, ['-n', proj]);
+    }
+    return launchDirect('code.cmd', ['-n', proj]);
   }
 
   // Google Chrome
   if (name.includes('chrome')) {
     const p = findExistingExe(KNOWN_PATHS.chrome);
-    if (p) return launchDetached(p, targetPath ? [targetPath] : []);
+    const url = targetPath || 'https://google.com';
+    if (p) return launchDirect(p, [url]);
     const edge = findExistingExe(KNOWN_PATHS.edge);
-    if (edge) return launchDetached(edge, targetPath ? [targetPath] : []);
-    return launchDetached('start', ['chrome']);
+    if (edge) return launchDirect(edge, [url]);
+    return launchDirect('explorer.exe', [url]);
   }
 
   // Microsoft Edge / Navigateur
   if (name.includes('edge') || name.includes('navigateur') || name.includes('internet')) {
     const p = findExistingExe(KNOWN_PATHS.edge) || findExistingExe(KNOWN_PATHS.chrome);
-    return p ? launchDetached(p, targetPath ? [targetPath] : []) : launchDetached('msedge', targetPath ? [targetPath] : []);
+    const url = targetPath || 'https://google.com';
+    if (p) return launchDirect(p, [url]);
+    return launchDirect('explorer.exe', [url]);
   }
 
   // WhatsApp Desktop (via package Windows Store ou Web)
   if (name.includes('whatsapp')) {
-    try {
-      const p = spawn('powershell.exe', [
-        '-Command',
-        `Start-Process 'explorer.exe' 'shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App'`,
-      ], { detached: true, stdio: 'ignore' });
-      p.unref();
-      return { success: true, message: 'WhatsApp Desktop lancé sur votre écran.' };
-    } catch {
-      return openUrl('https://web.whatsapp.com');
-    }
+    return launchDirect('explorer.exe', ['shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App']);
   }
 
   // Spotify
   if (name.includes('spotify') || name.includes('musique')) {
     const p = findExistingExe(KNOWN_PATHS.spotify);
-    if (p) {
-      const sp = spawn(p, [], { detached: true, stdio: 'ignore' });
-      sp.unref();
-      return { success: true, message: 'Spotify lancé.' };
-    }
+    if (p) return launchDirect(p, []);
     return openUrl('https://open.spotify.com');
   }
 
   // Canva
   if (name.includes('canva')) {
     const p = findExistingExe(KNOWN_PATHS.canva);
-    if (p) return launchDetached(p);
+    if (p) return launchDirect(p, []);
     return openUrl('https://canva.com');
   }
 
   // Bloc-notes
   if (name.includes('notepad') || name.includes('bloc')) {
-    return launchDetached('notepad', targetPath ? [targetPath] : []);
+    return launchDirect('notepad.exe', targetPath ? [targetPath] : []);
   }
 
   // Calculatrice
   if (name.includes('calc')) {
-    return launchDetached('calc.exe');
+    return launchDirect('calc.exe', []);
   }
 
   // Explorateur de fichiers
   if (name.includes('explorer') || name.includes('dossier') || name.includes('fichier') || name.includes('document')) {
     const p = targetPath || path.join(os.homedir(), 'Documents');
-    return launchDetached('explorer', [p]);
+    return launchDirect('explorer.exe', [p]);
   }
 
   // Terminal
   if (name.includes('terminal') || name.includes('powershell') || name.includes('cmd')) {
-    return launchDetached('powershell');
+    return launchDirect('powershell.exe', []);
   }
 
   // Paint
   if (name.includes('paint') || name.includes('dessin')) {
-    return launchDetached('mspaint.exe');
+    return launchDirect('mspaint.exe', []);
   }
 
   // Défaut
-  return launchDetached(appName, targetPath ? [targetPath] : []);
+  return launchDirect(appName, targetPath ? [targetPath] : []);
 }
 
 // 2. FERMER UNE APPLICATION SUR WINDOWS

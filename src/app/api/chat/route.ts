@@ -55,58 +55,58 @@ export async function POST(req: NextRequest) {
 
       if (lower.includes('vs') || lower.includes('code')) {
         await launchApp('vscode');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Visual Studio Code a été lancé physiquement sur votre écran Windows.';
+        actionExecutedNote = 'Visual Studio Code a été lancé physiquement avec le projet Jarvis sur votre écran.';
       } else if (lower.includes('calc')) {
         await launchApp('calc');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : La calculatrice a été lancée sur votre écran.';
+        actionExecutedNote = 'La calculatrice Windows a été lancée sur votre écran.';
       } else if (lower.includes('notepad') || lower.includes('bloc')) {
         await launchApp('notepad');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le bloc-notes a été ouvert sur votre bureau.';
+        actionExecutedNote = 'Le Bloc-notes Windows a été ouvert sur votre écran.';
       } else if (lower.includes('chrome')) {
         await launchApp('chrome');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Google Chrome a été lancé.';
+        actionExecutedNote = 'Google Chrome a été lancé.';
       } else if (lower.includes('edge') || lower.includes('navigateur') || lower.includes('internet')) {
         await launchApp('edge');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le navigateur Web a été ouvert.';
+        actionExecutedNote = 'Le navigateur Microsoft Edge a été ouvert.';
       } else if (lower.includes('explorer') || lower.includes('fichier') || lower.includes('dossier') || lower.includes('document')) {
         await launchApp('explorer');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : L\'explorateur de fichiers a été ouvert.';
+        actionExecutedNote = 'L\'explorateur de fichiers Windows a été ouvert.';
       } else if (lower.includes('terminal') || lower.includes('powershell') || lower.includes('console')) {
         await launchApp('terminal');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le terminal PowerShell a été ouvert.';
+        actionExecutedNote = 'Le terminal PowerShell a été ouvert sur l\'écran.';
       } else if (lower.includes('spotify') || lower.includes('musique') || lower.includes('chanson')) {
         await launchApp('spotify');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Spotify a été lancé sur votre ordinateur.';
+        actionExecutedNote = 'Spotify a été lancé sur votre ordinateur.';
       } else if (lower.includes('whatsapp')) {
         await launchApp('whatsapp');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : WhatsApp Desktop a été lancé sur votre écran.';
+        actionExecutedNote = 'WhatsApp Desktop a été lancé sur votre écran.';
       } else if (lower.includes('canva')) {
         await launchApp('canva');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Canva a été ouvert pour vos designs.';
+        actionExecutedNote = 'Canva a été ouvert pour vos créations.';
       } else if (lower.includes('paint') || lower.includes('dessin')) {
         await launchApp('paint');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Microsoft Paint a été ouvert.';
+        actionExecutedNote = 'Microsoft Paint a été ouvert sur l\'écran.';
       } else if (lower.includes('youtube')) {
         await openUrl('https://youtube.com');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : YouTube a été ouvert dans votre navigateur.';
+        actionExecutedNote = 'YouTube a été ouvert dans votre navigateur.';
       } else if (lower.includes('facebook')) {
         await openUrl('https://facebook.com');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Facebook a été ouvert dans votre navigateur.';
+        actionExecutedNote = 'Facebook a été ouvert dans votre navigateur.';
       } else if (lower.includes('linkedin')) {
         await openUrl('https://linkedin.com');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : LinkedIn a été ouvert dans votre navigateur.';
+        actionExecutedNote = 'LinkedIn a été ouvert dans votre navigateur.';
       } else if (lower.includes('twitter') || lower.includes('sur x')) {
         await openUrl('https://x.com');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : X (Twitter) a été ouvert dans votre navigateur.';
+        actionExecutedNote = 'X (Twitter) a été ouvert dans votre navigateur.';
       } else if (lower.includes('github')) {
         await openUrl('https://github.com');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : GitHub a été ouvert dans votre navigateur.';
+        actionExecutedNote = 'GitHub a été ouvert dans votre navigateur.';
       } else if (lower.includes('google')) {
         await openUrl('https://google.com');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Google a été ouvert dans votre navigateur.';
+        actionExecutedNote = 'Google a été ouvert dans votre navigateur.';
       } else if (lower.includes('gmail') || lower.includes('mail')) {
         await openUrl('https://mail.google.com');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Gmail a été ouvert dans votre navigateur.';
+        actionExecutedNote = 'Gmail a été ouvert dans votre navigateur.';
       }
     }
 
@@ -115,30 +115,38 @@ export async function POST(req: NextRequest) {
       const { closeApp } = await import('@/lib/system-controller');
       if (lower.includes('vs') || lower.includes('code')) {
         await closeApp('vscode');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Visual Studio Code a été fermé.';
+        actionExecutedNote = 'Visual Studio Code a été fermé.';
       } else if (lower.includes('chrome')) {
         await closeApp('chrome');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Google Chrome a été fermé.';
+        actionExecutedNote = 'Google Chrome a été fermé.';
       } else if (lower.includes('calc')) {
         await closeApp('calc');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : La calculatrice a été fermée.';
+        actionExecutedNote = 'La calculatrice a été fermée.';
       } else if (lower.includes('notepad') || lower.includes('bloc')) {
         await closeApp('notepad');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le bloc-notes a été fermé.';
+        actionExecutedNote = 'Le Bloc-notes a été fermé.';
       } else if (lower.includes('spotify')) {
         await closeApp('spotify');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Spotify a été arrêté.';
+        actionExecutedNote = 'Spotify a été arrêté.';
       } else if (lower.includes('whatsapp')) {
         await closeApp('whatsapp');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : WhatsApp a été fermé.';
+        actionExecutedNote = 'WhatsApp a été fermé.';
       }
+    }
+
+    // 3.3 Bascule de langue (Anglais / Français)
+    let languageDirective = '';
+    if (lower.includes('en anglais') || lower.includes('in english') || lower.includes('speak english') || lower.includes('talk in english')) {
+      languageDirective = '\n[DIRECTIVE LINGUISTIQUE : Roysten souhaite pratiquer son anglais. Réponds-lui entièrement en anglais fluide, élégant et soigné (style JARVIS britannique). Tu peux ajouter à la toute fin un petit tip de vocabulaire ou de grammaire si utile.]';
+    } else if (lower.includes('en français') || lower.includes('reviens en français') || lower.includes('parle en français')) {
+      languageDirective = '\n[DIRECTIVE LINGUISTIQUE : Repasse immédiatement et entièrement en français d\'élite pour Roysten.]';
     }
 
     // 3.5 Détection demande de point / briefing
     if (lower.includes('point sur') || lower.includes('fais-moi le point') || lower.includes('fais le point') || lower.includes('briefing')) {
       const { generateMorningBriefing } = await import('@/lib/briefing-service');
       const briefingData = await generateMorningBriefing(userEmail);
-      actionExecutedNote = `✓ [DONNÉES DU POINT EN TEMPS RÉEL RÉCUPÉRÉES] : ${briefingData}`;
+      actionExecutedNote = `Données du point récupérées en temps réel : ${briefingData}`;
     }
 
     // 4. Rappel des souvenirs pertinents pour Roysten
@@ -154,7 +162,8 @@ export async function POST(req: NextRequest) {
     // 6. Assembler le prompt système complet avec consigne d'action réelle
     const fullSystemPrompt = `${JARVIS_CONFIG.defaultSystemPrompt}
 ${relevantMemoriesContext}
-${actionExecutedNote ? `\n[NOTE SYSTÈME CRITIQUE : Tu viens d'exécuter réellement cette action ou de récupérer ces données pour Roysten : "${actionExecutedNote}".\nINTERDICTION FORMELLE : Ne simule JAMAIS une ouverture d'application dans ta réponse, ne dessine AUCUN faux bloc de code ou cadre ASCII pour faire semblant d'être une application, ne dis JAMAIS que tu vas simuler. Confirme sobrement et avec la classe d'un majordome futuriste que l'ordre est exécuté.]` : ''}`;
+${languageDirective}
+${actionExecutedNote ? `\n[ACTION RÉELLE ACCOMPLIE : "${actionExecutedNote}". Confirme sobrement et avec la distinction du majordome JARVIS de Tony Stark que l'action est réalisée. Ne recopie AUCUNE étiquette système entre crochets, ne simule pas d'interface en texte ASCII/code.]` : ''}`;
 
     // Préparer le message utilisateur actuel (avec image si fournie)
     const userCurrentContent: any = image
