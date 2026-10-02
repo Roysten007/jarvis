@@ -4,137 +4,236 @@ import path from 'path';
 import fs from 'fs';
 
 // Exécution directe d'un processus Windows sans intermédiaire cmd.exe
-export function launchDirect(target: string, args: string[] = []): Promise<{ success: boolean; message: string }> {
+// Exécution d'un processus Windows avec forçage de focus au premier plan de l'écran
+export function launchForeground(
+  target: string,
+  args: string[] = [],
+  windowTitleHints: string[] = []
+): Promise<{ success: boolean; message: string }> {
   return new Promise((resolve) => {
     try {
-      const p = spawn(target, args, {
+      const escapedTarget = target.replace(/'/g, "''");
+      const argsArray = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(',');
+      const activateCode = windowTitleHints
+        .map((h) => `$ws.AppActivate('${h.replace(/'/g, "''")}');`)
+        .join(' ');
+
+      const psScript = `
+        $t = '${escapedTarget}';
+        if ($t.StartsWith('shell:') -or $t.StartsWith('whatsapp:') -or $t.StartsWith('spotify:') -or $t.StartsWith('http:') -or $t.StartsWith('https:')) {
+          Start-Process $t;
+        } elseif (Test-Path $t -PathType Leaf -Filter *.lnk) {
+          Invoke-Item $t;
+        } elseif ('${argsArray}') {
+          Start-Process $t -ArgumentList @(${argsArray});
+        } else {
+          Start-Process $t;
+        }
+        Start-Sleep -Milliseconds 600;
+        $ws = New-Object -ComObject WScript.Shell;
+        ${activateCode}
+      `;
+
+      const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
         detached: true,
         stdio: 'ignore',
-        windowsHide: false,
+        windowsHide: true,
       });
       p.unref();
-      resolve({ success: true, message: `Lancé avec succès (PID: ${p.pid}) : ${target}` });
+
+      resolve({ success: true, message: `Lancé et activé au premier plan : ${path.basename(target)}` });
     } catch (err: any) {
-      resolve({ success: false, message: `Erreur de lancement : ${err.message}` });
+      resolve({ success: false, message: `Erreur : ${err.message}` });
     }
   });
 }
 
-export const launchDetached = launchDirect;
+// Action WhatsApp : Rédiger ou envoyer un message directement
+export async function sendWhatsAppMessage(
+  messageText: string,
+  contactOrPhone?: string
+): Promise<{ success: boolean; message: string }> {
+  const text = messageText.trim();
+  const encoded = encodeURIComponent(text);
+
+  // Si un numéro est détecté (+229..., 00229...)
+  const cleanPhone = contactOrPhone?.replace(/[^0-9]/g, '');
+  if (cleanPhone && cleanPhone.length >= 8) {
+    return launchForeground(`whatsapp://send?phone=${cleanPhone}&text=${encoded}`, [], ['WhatsApp']);
+  }
+
+  return launchForeground(`whatsapp://send?text=${encoded}`, [], ['WhatsApp']);
+}
+
+// Action Spotify : Lancer Spotify et rechercher/jouer un morceau ou artiste
+export async function playSpotify(query?: string): Promise<{ success: boolean; message: string }> {
+  if (query && query.trim()) {
+    const enc = encodeURIComponent(query.trim());
+    launchForeground(`spotify:search:${enc}`, [], ['Spotify']);
+    return openUrl(`https://open.spotify.com/search/${enc}`);
+  }
+  launchForeground('shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', [], ['Spotify']);
+  return openUrl('https://open.spotify.com');
+}
+
+// Action VS Code : Ouvrir un projet ou fichier au premier plan
+export async function openVSCode(targetPath?: string): Promise<{ success: boolean; message: string }> {
+  const proj = targetPath || 'c:\\Users\\ADMIN\\Documents\\Jarvis';
+  const p = findExistingExe(KNOWN_PATHS.vscode);
+  if (p) {
+    return launchForeground(p, ['-n', proj], ['Visual Studio Code', 'Code', 'ZCode']);
+  }
+  return launchForeground('cmd.exe', ['/c', 'code', '-n', proj], ['Visual Studio Code', 'Code']);
+}
+
+// Action YouTube : Recherche et lancement de vidéo
+export async function searchYouTube(query: string): Promise<{ success: boolean; message: string }> {
+  const enc = encodeURIComponent(query.trim());
+  return openUrl(`https://www.youtube.com/results?search_query=${enc}`);
+}
+
+// Action Google : Recherche Web directe
+export async function searchGoogle(query: string): Promise<{ success: boolean; message: string }> {
+  const enc = encodeURIComponent(query.trim());
+  return openUrl(`https://www.google.com/search?q=${enc}`);
+}
 
 // Chemins d'exécutables vérifiés sur Windows
 const KNOWN_PATHS = {
   chrome: [
+    `C:\\Users\\ADMIN\\Desktop\\Google Chrome.lnk`,
     `C:\\Users\\ADMIN\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe`,
     `C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe`,
-    `C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe`,
-  ],
-  vscode: [
-    `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe`,
-    `C:\\Program Files\\Microsoft VS Code\\Code.exe`,
   ],
   edge: [
     `C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe`,
     `C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe`,
   ],
+  vscode: [
+    `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe`,
+    `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\ZCode\\ZCode.exe`,
+    `C:\\Users\\ADMIN\\Desktop\\ZCode.lnk`,
+  ],
   spotify: [
+    `shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify`,
     `C:\\Users\\ADMIN\\AppData\\Local\\Microsoft\\WindowsApps\\Spotify.exe`,
-    `C:\\Users\\ADMIN\\AppData\\Roaming\\Spotify\\Spotify.exe`,
   ],
   canva: [
+    `C:\\Users\\ADMIN\\Desktop\\Canva.lnk`,
     `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Canva\\Canva.exe`,
   ],
-  claude: [
-    `C:\\Users\\ADMIN\\AppData\\Local\\Microsoft\\WindowsApps\\claude-desktop.exe`,
+  capcut: [
+    `C:\\Users\\ADMIN\\Desktop\\CapCut.lnk`,
+    `C:\\Users\\ADMIN\\AppData\\Local\\CapCut\\Apps\\CapCut.exe`,
+  ],
+  word: [
+    `C:\\Users\\ADMIN\\Desktop\\Word.lnk`,
+    `C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE`,
+  ],
+  excel: [
+    `C:\\Users\\ADMIN\\Desktop\\Excel.lnk`,
+    `C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE`,
+  ],
+  powerpoint: [
+    `C:\\Users\\ADMIN\\Desktop\\PowerPoint.lnk`,
+    `C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE`,
   ],
 };
 
 function findExistingExe(paths: string[]): string | null {
   for (const p of paths) {
+    if (p.startsWith('shell:')) return p;
     if (fs.existsSync(p)) return p;
   }
   return null;
 }
 
-// 1. OUVRIR UNE APPLICATION SUR L'ORDINATEUR
+// 1. OUVRIR UNE APPLICATION SUR L'ORDINATEUR AVEC FOCUS ÉCRAN
 export async function launchApp(appName: string, targetPath?: string): Promise<{ success: boolean; message: string }> {
   const name = appName.toLowerCase().trim();
 
-  // Visual Studio Code (avec -n pour forcer l'ouverture d'une nouvelle fenêtre visible sur l'écran)
-  if (name.includes('code') || name.includes('vs')) {
-    const proj = targetPath || 'c:\\Users\\ADMIN\\Documents\\Jarvis';
-    const p = findExistingExe(KNOWN_PATHS.vscode);
-    if (p) {
-      return launchDirect(p, ['-n', proj]);
-    }
-    return launchDirect('code.cmd', ['-n', proj]);
+  // Visual Studio Code / ZCode
+  if (name.includes('code') || name.includes('vs') || name.includes('zcode')) {
+    return openVSCode(targetPath);
   }
 
   // Google Chrome
   if (name.includes('chrome')) {
     const p = findExistingExe(KNOWN_PATHS.chrome);
     const url = targetPath || 'https://google.com';
-    if (p) return launchDirect(p, [url]);
-    const edge = findExistingExe(KNOWN_PATHS.edge);
-    if (edge) return launchDirect(edge, [url]);
-    return launchDirect('explorer.exe', [url]);
+    if (p) return launchForeground(p, [url], ['Google Chrome', 'Chrome']);
+    return openUrl(url);
   }
 
-  // Microsoft Edge / Navigateur
-  if (name.includes('edge') || name.includes('navigateur') || name.includes('internet')) {
-    const p = findExistingExe(KNOWN_PATHS.edge) || findExistingExe(KNOWN_PATHS.chrome);
-    const url = targetPath || 'https://google.com';
-    if (p) return launchDirect(p, [url]);
-    return launchDirect('explorer.exe', [url]);
-  }
-
-  // WhatsApp Desktop (via package Windows Store ou Web)
+  // WhatsApp Desktop
   if (name.includes('whatsapp')) {
-    return launchDirect('explorer.exe', ['shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App']);
+    return launchForeground('shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App', [], ['WhatsApp']);
   }
 
   // Spotify
   if (name.includes('spotify') || name.includes('musique')) {
-    const p = findExistingExe(KNOWN_PATHS.spotify);
-    if (p) return launchDirect(p, []);
-    return openUrl('https://open.spotify.com');
+    return playSpotify();
   }
 
   // Canva
   if (name.includes('canva')) {
     const p = findExistingExe(KNOWN_PATHS.canva);
-    if (p) return launchDirect(p, []);
+    if (p) return launchForeground(p, [], ['Canva']);
     return openUrl('https://canva.com');
+  }
+
+  // CapCut
+  if (name.includes('capcut')) {
+    const p = findExistingExe(KNOWN_PATHS.capcut);
+    if (p) return launchForeground(p, [], ['CapCut']);
+  }
+
+  // Word
+  if (name.includes('word') || name.includes('texte')) {
+    const p = findExistingExe(KNOWN_PATHS.word);
+    if (p) return launchForeground(p, [], ['Word']);
+  }
+
+  // Excel
+  if (name.includes('excel') || name.includes('tableur')) {
+    const p = findExistingExe(KNOWN_PATHS.excel);
+    if (p) return launchForeground(p, [], ['Excel']);
+  }
+
+  // PowerPoint
+  if (name.includes('powerpoint') || name.includes('slide')) {
+    const p = findExistingExe(KNOWN_PATHS.powerpoint);
+    if (p) return launchForeground(p, [], ['PowerPoint']);
   }
 
   // Bloc-notes
   if (name.includes('notepad') || name.includes('bloc')) {
-    return launchDirect('notepad.exe', targetPath ? [targetPath] : []);
+    return launchForeground('notepad.exe', targetPath ? [targetPath] : [], ['Bloc-notes', 'Notepad']);
   }
 
   // Calculatrice
   if (name.includes('calc')) {
-    return launchDirect('calc.exe', []);
+    return launchForeground('calc.exe', [], ['Calculatrice', 'Calculator']);
   }
 
   // Explorateur de fichiers
   if (name.includes('explorer') || name.includes('dossier') || name.includes('fichier') || name.includes('document')) {
     const p = targetPath || path.join(os.homedir(), 'Documents');
-    return launchDirect('explorer.exe', [p]);
+    return launchForeground('explorer.exe', [p], ['Explorateur', 'Documents']);
   }
 
   // Terminal
   if (name.includes('terminal') || name.includes('powershell') || name.includes('cmd')) {
-    return launchDirect('powershell.exe', []);
+    return launchForeground('powershell.exe', [], ['PowerShell', 'Terminal']);
   }
 
   // Paint
   if (name.includes('paint') || name.includes('dessin')) {
-    return launchDirect('mspaint.exe', []);
+    return launchForeground('mspaint.exe', [], ['Paint']);
   }
 
   // Défaut
-  return launchDirect(appName, targetPath ? [targetPath] : []);
+  return launchForeground(appName, targetPath ? [targetPath] : []);
 }
 
 // 2. FERMER UNE APPLICATION SUR WINDOWS
@@ -171,13 +270,13 @@ export async function openUrl(url: string): Promise<{ success: boolean; message:
     const validUrl = url.startsWith('http') ? url : `https://${url}`;
     const chrome = findExistingExe(KNOWN_PATHS.chrome);
     if (chrome) {
-      return launchDetached(chrome, [validUrl]);
+      return launchForeground(chrome, [validUrl], ['Google Chrome', 'Chrome']);
     }
     const edge = findExistingExe(KNOWN_PATHS.edge);
     if (edge) {
-      return launchDetached(edge, [validUrl]);
+      return launchForeground(edge, [validUrl], ['Microsoft Edge', 'Edge']);
     }
-    return launchDetached(validUrl);
+    return launchForeground(validUrl, [], ['Google Chrome', 'Chrome', 'Edge']);
   } catch (e: any) {
     return { success: false, message: `Erreur ouverture URL : ${e.message}` };
   }

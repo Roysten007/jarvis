@@ -16,6 +16,7 @@ export function EnglishView() {
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Initialiser la reconnaissance vocale en anglais
   useEffect(() => {
@@ -46,10 +47,7 @@ export function EnglishView() {
       recognitionRef.current?.stop();
       setIsListening(false);
     } else {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
-      }
+      stopSpeaking();
       try {
         recognitionRef.current?.start();
         setIsListening(true);
@@ -59,35 +57,66 @@ export function EnglishView() {
     }
   };
 
+  const stopSpeaking = () => {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      } catch (e) {}
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  };
+
   const speakText = (text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
+    if (typeof window === 'undefined') return;
+    stopSpeaking();
 
     // Nettoyer balises markdown
     const clean = text.replace(/[*#`_~[\]()]/g, '').replace(/https?:\/\/\S+/g, '').trim();
     if (!clean) return;
 
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.lang = 'en-US';
-    utterance.rate = 1.0;
-    utterance.pitch = 0.95;
+    // 1. Tenter la voix neurale anglaise haute fidélité via /api/tts
+    fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: clean, lang: 'en' }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('API TTS error');
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        currentAudioRef.current = audio;
+        setIsSpeaking(true);
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          currentAudioRef.current = null;
+          setIsSpeaking(false);
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          currentAudioRef.current = null;
+          fallbackSpeech(clean);
+        };
+        audio.play().catch(() => fallbackSpeech(clean));
+      })
+      .catch(() => fallbackSpeech(clean));
 
-    const voices = window.speechSynthesis.getVoices();
-    const enVoice = voices.find((v) => v.lang.startsWith('en') && /natural|david|george|google/i.test(v.name)) ||
-      voices.find((v) => v.lang.startsWith('en'));
-    if (enVoice) utterance.voice = enVoice;
-
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const stopSpeaking = () => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
+    function fallbackSpeech(t: string) {
+      if (!window.speechSynthesis) return;
+      const utterance = new SpeechSynthesisUtterance(t);
+      utterance.lang = 'en-US';
+      utterance.rate = 1.0;
+      utterance.pitch = 0.95;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
     }
   };
 

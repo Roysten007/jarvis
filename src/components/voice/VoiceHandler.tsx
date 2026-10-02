@@ -36,6 +36,7 @@ export function VoiceHandler({
   const recognitionRef = useRef<any>(null);
   const speechQueueRef = useRef<string[]>([]);
   const isPlayingQueueRef = useRef<boolean>(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Charger la langue et options sauvegardées
   useEffect(() => {
@@ -130,9 +131,9 @@ export function VoiceHandler({
     audio.play().catch((err) => console.warn('Erreur lecture /voix.mp3:', err));
   };
 
-  // File d'attente vocale phrase par phrase (Streaming TTS sans latence)
+  // File d'attente vocale ultra-réaliste (Neural Studio TTS via /api/tts + fallback Web Speech)
   const processSpeechQueue = useCallback(() => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    if (typeof window === 'undefined') return;
     if (isPlayingQueueRef.current || speechQueueRef.current.length === 0) return;
 
     const sentence = speechQueueRef.current.shift();
@@ -141,29 +142,17 @@ export function VoiceHandler({
     isPlayingQueueRef.current = true;
     setIsSpeaking(true);
 
-    const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
-    utterance.rate = rate;
-    utterance.pitch = pitch;
-
-    if (selectedVoiceName) {
-      const voiceObj = voices.find(
-        (v) => v.name === selectedVoiceName && v.lang.toLowerCase().startsWith(voiceLang)
-      );
-      if (voiceObj) utterance.voice = voiceObj;
-    }
-
-    utterance.onend = () => {
+    const onSentenceFinish = () => {
       isPlayingQueueRef.current = false;
       if (speechQueueRef.current.length > 0) {
         processSpeechQueue();
       } else {
         setIsSpeaking(false);
-        // Si mode mains libres activé, réécouter automatiquement
         if (handsFree && recognitionRef.current) {
           setTimeout(() => {
             try {
-              playMicOpen();
+              if (playVoiceOnWake) playCustomVoiceSample();
+              else playMicOpen();
               recognitionRef.current.start();
               setIsListening(true);
             } catch (e) {}
@@ -172,13 +161,62 @@ export function VoiceHandler({
       }
     };
 
-    utterance.onerror = () => {
-      isPlayingQueueRef.current = false;
-      setIsSpeaking(false);
+    // Fallback synthétiseur navigateur local si hors-ligne ou erreur
+    const runFallbackSynthesis = () => {
+      if (!window.speechSynthesis) {
+        onSentenceFinish();
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(sentence);
+      utterance.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
+      utterance.rate = rate;
+      utterance.pitch = pitch;
+
+      if (selectedVoiceName) {
+        const voiceObj = voices.find(
+          (v) => v.name === selectedVoiceName && v.lang.toLowerCase().startsWith(voiceLang)
+        );
+        if (voiceObj) utterance.voice = voiceObj;
+      }
+
+      utterance.onend = onSentenceFinish;
+      utterance.onerror = onSentenceFinish;
+      window.speechSynthesis.speak(utterance);
     };
 
-    window.speechSynthesis.speak(utterance);
-  }, [rate, pitch, selectedVoiceName, voices, handsFree, setIsListening, voiceLang]);
+    // 1. Tenter la voix neurale studio haute définition (Henri en FR, Christopher en EN)
+    fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: sentence, lang: voiceLang }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('API TTS indisponible');
+        return res.blob();
+      })
+      .then((blob) => {
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        currentAudioRef.current = audio;
+
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          currentAudioRef.current = null;
+          onSentenceFinish();
+        };
+
+        audio.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          currentAudioRef.current = null;
+          runFallbackSynthesis();
+        };
+
+        audio.play().catch(() => runFallbackSynthesis());
+      })
+      .catch(() => {
+        runFallbackSynthesis();
+      });
+  }, [rate, pitch, selectedVoiceName, voices, handsFree, setIsListening, voiceLang, playVoiceOnWake]);
 
   // Ajouter un fragment textuel à la file de parole
   const queueSpeech = useCallback(
@@ -279,17 +317,23 @@ export function VoiceHandler({
   };
 
   const stopSpeaking = () => {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      } catch (e) {}
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
-      speechQueueRef.current = [];
-      isPlayingQueueRef.current = false;
-      setIsSpeaking(false);
     }
+    speechQueueRef.current = [];
+    isPlayingQueueRef.current = false;
+    setIsSpeaking(false);
   };
 
   const handleTestVoice = () => {
     stopSpeaking();
-    queueSpeech('À vos ordres, Monsieur Roysten. La fréquence vocale de JARVIS est ajustée.');
+    queueSpeech('À vos ordres, Monsieur Roysten. Le moteur vocal neural haute fidélité de JARVIS est opérationnel.');
   };
 
   const handleSaveSettings = () => {

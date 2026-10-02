@@ -104,17 +104,64 @@ export function SystemControlView() {
     }
   };
 
+  const [whatsAppContact, setWhatsAppContact] = useState('Roysten');
+  const [whatsAppMsg, setWhatsAppMsg] = useState('Salut Roysten ! Le système JARVIS est opérationnel.');
+  const [spotifyQuery, setSpotifyQuery] = useState('');
+
+  const handleWhatsAppAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatusMessage(`Préparation du message WhatsApp pour "${whatsAppContact}"...`);
+    try {
+      const res = await fetch('/api/system/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'whatsapp_message',
+          contactOrPhone: whatsAppContact,
+          messageText: whatsAppMsg,
+        }),
+      });
+      const data = await res.json();
+      setStatusMessage(data.message || 'WhatsApp ouvert avec le message pré-rempli.');
+      setTimeout(() => setStatusMessage(null), 4000);
+    } catch (e: any) {
+      setStatusMessage(`Erreur : ${e.message}`);
+    }
+  };
+
+  const handleSpotifyAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatusMessage(spotifyQuery ? `Recherche "${spotifyQuery}" sur Spotify...` : 'Lancement de Spotify...');
+    try {
+      const res = await fetch('/api/system/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'play_spotify',
+          query: spotifyQuery,
+        }),
+      });
+      const data = await res.json();
+      setStatusMessage(data.message || 'Spotify activé au premier plan.');
+      setTimeout(() => setStatusMessage(null), 4000);
+    } catch (e: any) {
+      setStatusMessage(`Erreur : ${e.message}`);
+    }
+  };
+
   const defaultApps = [
-    { id: 'vscode', name: 'VS Code', label: 'Éditeur de code', icon: Terminal, color: 'text-cyan-400' },
-    { id: 'chrome', name: 'Google Chrome', label: 'Navigateur Web', icon: Globe, color: 'text-amber-400' },
-    { id: 'explorer', name: 'Mes Documents', label: 'Explorateur de fichiers', icon: Folder, color: 'text-emerald-400' },
-    { id: 'notepad', name: 'Bloc-notes', label: 'Éditeur rapide', icon: Monitor, color: 'text-indigo-400' },
-    { id: 'calc', name: 'Calculatrice', label: 'Calculs système', icon: Cpu, color: 'text-rose-400' },
+    { id: 'vscode', name: 'VS Code', label: 'Projet Jarvis (IDE)', icon: Terminal, color: 'text-cyan-400' },
     { id: 'spotify', name: 'Spotify', label: 'Musique & Focus', icon: Play, color: 'text-emerald-400' },
     { id: 'whatsapp', name: 'WhatsApp', label: 'Messagerie Desktop', icon: Smartphone, color: 'text-emerald-500' },
     { id: 'canva', name: 'Canva', label: 'Design graphique', icon: Sparkles, color: 'text-purple-400' },
+    { id: 'capcut', name: 'CapCut', label: 'Montage vidéo', icon: Play, color: 'text-rose-400' },
+    { id: 'word', name: 'Microsoft Word', label: 'Traitement de texte', icon: Monitor, color: 'text-blue-400' },
+    { id: 'excel', name: 'Microsoft Excel', label: 'Tableur & Data', icon: Monitor, color: 'text-emerald-400' },
+    { id: 'powerpoint', name: 'PowerPoint', label: 'Diaporamas & Pitch', icon: Monitor, color: 'text-orange-400' },
+    { id: 'chrome', name: 'Google Chrome', label: 'Navigateur Web', icon: Globe, color: 'text-amber-400' },
+    { id: 'explorer', name: 'Mes Documents', label: 'Explorateur Windows', icon: Folder, color: 'text-emerald-300' },
     { id: 'youtube', name: 'YouTube', label: 'Vidéos & Tutos', icon: Play, color: 'text-rose-500' },
-    { id: 'terminal', name: 'PowerShell', label: 'Invite de commandes', icon: Terminal, color: 'text-cyan-300' },
+    { id: 'terminal', name: 'PowerShell', label: 'Terminal système', icon: Terminal, color: 'text-cyan-300' },
   ];
 
   return (
@@ -195,7 +242,7 @@ export function SystemControlView() {
           <span>APPLICATIONS DU PC ACCESSIBLES EN 1 CLIC (OU À LA VOIX) :</span>
         </div>
         <p className="text-[11px] text-slate-400">
-          Vous pouvez cliquer sur ces raccourcis ou simplement dire à l'oral : <em>« Jarvis, ouvre VS Code »</em> ou <em>« Jarvis, lance la calculatrice »</em>.
+          Vous pouvez cliquer sur ces raccourcis ou simplement dire à l'oral : <em>« Jarvis, ouvre VS Code »</em>, <em>« Jarvis, mets du Burna Boy sur Spotify »</em> ou <em>« Jarvis, écris un message à Roysten sur WhatsApp »</em>.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
@@ -237,6 +284,125 @@ export function SystemControlView() {
           >
             Lancer
           </button>
+        </div>
+      </div>
+
+      {/* ACTION WHATSAPP DIRECTE */}
+      <div className="hud-panel p-5 rounded-lg border-emerald-500/30 bg-emerald-950/10 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+            <Smartphone className="w-4 h-4" />
+            <span>ACTION WHATSAPP : RÉDIGER & ENVOYER SUR L'ORDINATEUR</span>
+          </div>
+          <span className="text-[10px] text-emerald-500/80 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded">
+            Focus Premier Plan
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Demandez vocalement : <em>« Jarvis, écris un message à Roysten sur WhatsApp : salut boss »</em> ou remplissez ci-dessous :
+        </p>
+
+        <form onSubmit={handleWhatsAppAction} className="space-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <label className="text-[10px] text-slate-400 block mb-1">Destinataire ou Numéro :</label>
+              <input
+                type="text"
+                value={whatsAppContact}
+                onChange={(e) => setWhatsAppContact(e.target.value)}
+                placeholder="ex: Roysten ou +22997000000"
+                className="w-full bg-[#080e1a] border border-emerald-500/30 rounded px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-emerald-400"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-[10px] text-slate-400 block mb-1">Message à préparer :</label>
+              <input
+                type="text"
+                value={whatsAppMsg}
+                onChange={(e) => setWhatsAppMsg(e.target.value)}
+                placeholder="Tapez le message..."
+                className="w-full bg-[#080e1a] border border-emerald-500/30 rounded px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-emerald-400"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex gap-1.5 text-[10px] text-slate-400">
+              <span className="text-slate-500">Exemples :</span>
+              <button
+                type="button"
+                onClick={() => setWhatsAppMsg('Salut bro, le projet Jarvis avance super bien !')}
+                className="hover:text-emerald-300 underline"
+              >
+                Projet Jarvis
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => setWhatsAppMsg('Dispo pour un call vocal ?')}
+                className="hover:text-emerald-300 underline"
+              >
+                Call
+              </button>
+            </div>
+
+            <button
+              type="submit"
+              className="px-4 py-1.5 bg-emerald-500/20 border border-emerald-400 text-emerald-300 rounded hover:bg-emerald-500/30 text-xs font-bold flex items-center gap-1.5 shadow-hud-cyan"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Ouvrir & Rédiger sur WhatsApp</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* ACTION SPOTIFY DIRECTE */}
+      <div className="hud-panel p-5 rounded-lg border-cyan-500/30 bg-[#080d1b] space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
+            <Play className="w-4 h-4 text-emerald-400" />
+            <span>ACTION SPOTIFY : RECHERCHER & JOUER DE LA MUSIQUE</span>
+          </div>
+          <span className="text-[10px] text-cyan-400/80 bg-cyan-950/60 border border-cyan-500/40 px-2 py-0.5 rounded">
+            Desktop & Web
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Dites : <em>« Jarvis, mets de la musique lofi sur Spotify »</em> ou <em>« Jarvis, mets Burna Boy »</em> :
+        </p>
+
+        <form onSubmit={handleSpotifyAction} className="flex gap-2">
+          <input
+            type="text"
+            value={spotifyQuery}
+            onChange={(e) => setSpotifyQuery(e.target.value)}
+            placeholder="Artiste, titre ou ambiance (ex: Burna Boy, Lofi Hip Hop, Rema, Hans Zimmer)..."
+            className="flex-1 bg-[#090e1a] border border-cyan-500/30 rounded px-3 py-2 text-xs text-slate-100 outline-none focus:border-cyan-400"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2 bg-emerald-500/20 border border-emerald-400 text-emerald-300 rounded hover:bg-emerald-500/30 text-xs font-bold flex items-center gap-1.5"
+          >
+            <Play className="w-3.5 h-3.5 fill-emerald-400 text-emerald-400" />
+            <span>Lancer sur Spotify</span>
+          </button>
+        </form>
+
+        <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
+          {['Burna Boy', 'Lofi Beats', 'Hans Zimmer', 'Afrobeat 2026', 'Deep Focus'].map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => {
+                setSpotifyQuery(tag);
+                handleLaunch('spotify');
+              }}
+              className="px-2.5 py-1 rounded bg-slate-900 border border-slate-700 hover:border-emerald-400 text-slate-300 hover:text-emerald-300 text-[10px]"
+            >
+              🎵 {tag}
+            </button>
+          ))}
         </div>
       </div>
 
