@@ -61,6 +61,11 @@ export async function POST(req: NextRequest) {
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ conversationId: convId, type: 'start' })}\n\n`)
               );
+              if (systemResult.clientAction) {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ clientAction: systemResult.clientAction })}\n\n`)
+                );
+              }
               // Émission fluide mot par mot
               const words = directReply.split(' ');
               words.forEach((w, i) => {
@@ -84,6 +89,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           conversationId: convId,
           reply: directReply,
+          clientAction: systemResult.clientAction,
           modelUsed: 'system-pilot',
         });
       }
@@ -156,6 +162,11 @@ ${actionExecutedNote ? `\n[ACTION RÉELLE ACCOMPLIE : "${actionExecutedNote}". C
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ conversationId: convId, type: 'start' })}\n\n`)
             );
+            if (systemResult.clientAction) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ clientAction: systemResult.clientAction })}\n\n`)
+              );
+            }
 
             const reader = nvidiaStream.getReader();
             let buffer = '';
@@ -242,6 +253,7 @@ ${actionExecutedNote ? `\n[ACTION RÉELLE ACCOMPLIE : "${actionExecutedNote}". C
       conversationId: convId,
       role: 'assistant',
       content: replyContent,
+      clientAction: systemResult.clientAction,
       modelUsed,
     });
   } catch (error: any) {

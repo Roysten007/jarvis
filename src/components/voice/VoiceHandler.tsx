@@ -37,6 +37,32 @@ export function VoiceHandler({
   const speechQueueRef = useRef<string[]>([]);
   const isPlayingQueueRef = useRef<boolean>(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Débloquer le lecteur audio sur la première interaction de l'utilisateur
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    sharedAudioRef.current = audio;
+
+    const unlock = () => {
+      audio.play().then(() => audio.pause()).catch(() => {});
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+
+    window.addEventListener('click', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    window.addEventListener('touchstart', unlock, { once: true });
+
+    return () => {
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+  }, []);
 
   // Charger la langue et options sauvegardées
   useEffect(() => {
@@ -136,8 +162,23 @@ export function VoiceHandler({
     if (typeof window === 'undefined') return;
     if (isPlayingQueueRef.current || speechQueueRef.current.length === 0) return;
 
-    const sentence = speechQueueRef.current.shift();
-    if (!sentence) return;
+    const rawSentence = speechQueueRef.current.shift();
+    if (!rawSentence) return;
+
+    // Nettoyer les liens markdown [texte](url), les URLs et symboles pour la synthèse vocale
+    const sentence = rawSentence
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/[👉🎵💬💻🎨🎬▶️🔍]/g, '')
+      .trim();
+
+    if (!sentence) {
+      isPlayingQueueRef.current = false;
+      if (speechQueueRef.current.length > 0) {
+        processSpeechQueue();
+      }
+      return;
+    }
 
     isPlayingQueueRef.current = true;
     setIsSpeaking(true);
@@ -184,7 +225,7 @@ export function VoiceHandler({
       window.speechSynthesis.speak(utterance);
     };
 
-    // 1. Tenter la voix neurale studio haute définition (Henri en FR, Christopher en EN)
+    // 1. Tenter la voix neurale studio haute définition (Remy en FR, Ryan en EN)
     fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -196,7 +237,8 @@ export function VoiceHandler({
       })
       .then((blob) => {
         const audioUrl = URL.createObjectURL(blob);
-        const audio = new Audio(audioUrl);
+        const audio = sharedAudioRef.current || new Audio();
+        audio.src = audioUrl;
         currentAudioRef.current = audio;
 
         audio.onended = () => {
@@ -205,15 +247,20 @@ export function VoiceHandler({
           onSentenceFinish();
         };
 
-        audio.onerror = () => {
+        audio.onerror = (e) => {
+          console.warn('[TTS] Audio playback error:', e);
           URL.revokeObjectURL(audioUrl);
           currentAudioRef.current = null;
           runFallbackSynthesis();
         };
 
-        audio.play().catch(() => runFallbackSynthesis());
+        audio.play().catch((playErr) => {
+          console.warn('[TTS] Play blocked, falling back to local speech:', playErr);
+          runFallbackSynthesis();
+        });
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('[TTS] API error:', err);
         runFallbackSynthesis();
       });
   }, [rate, pitch, selectedVoiceName, voices, handsFree, setIsListening, voiceLang, playVoiceOnWake]);

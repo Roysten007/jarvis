@@ -3,7 +3,7 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, lang = 'fr' } = await req.json();
+    const { text, lang = 'fr', voice } = await req.json();
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json({ error: 'Texte requis' }, { status: 400 });
@@ -24,7 +24,9 @@ export async function POST(req: NextRequest) {
     const textToSpeak = cleanText.length > 500 ? cleanText.substring(0, 500) + '...' : cleanText;
 
     const tts = new MsEdgeTTS();
-    const voiceName = lang === 'en' ? 'en-US-ChristopherNeural' : 'fr-FR-HenriNeural';
+    // fr-FR-RemyMultilingualNeural : voix masculine studio bilingue naturelle et chaleureuse
+    // en-GB-RyanNeural : voix britannique d'élite fidèle au JARVIS de Tony Stark
+    const voiceName = voice || (lang === 'en' ? 'en-GB-RyanNeural' : 'fr-FR-RemyMultilingualNeural');
 
     await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
     const { audioStream } = tts.toStream(textToSpeak);

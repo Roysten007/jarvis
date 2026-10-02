@@ -12,32 +12,32 @@ export function launchForeground(
 ): Promise<{ success: boolean; message: string }> {
   return new Promise((resolve) => {
     try {
+      const isProtocolOrUrl = /^(https?|spotify|whatsapp|vscode):/i.test(target);
+      const isLnk = target.toLowerCase().endsWith('.lnk');
+      const isShell = target.toLowerCase().startsWith('shell:');
+
+      let psCommand = '';
       const escapedTarget = target.replace(/'/g, "''");
-      const argsArray = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(',');
-      const activateCode = windowTitleHints
-        .map((h) => `$ws.AppActivate('${h.replace(/'/g, "''")}');`)
-        .join(' ');
 
-      const psScript = `
-        $t = '${escapedTarget}';
-        if ($t.StartsWith('shell:') -or $t.StartsWith('whatsapp:') -or $t.StartsWith('spotify:') -or $t.StartsWith('http:') -or $t.StartsWith('https:')) {
-          Start-Process $t;
-        } elseif (Test-Path $t -PathType Leaf -Filter *.lnk) {
-          Invoke-Item $t;
-        } elseif ('${argsArray}') {
-          Start-Process $t -ArgumentList @(${argsArray});
-        } else {
-          Start-Process $t;
-        }
-        Start-Sleep -Milliseconds 600;
-        $ws = New-Object -ComObject WScript.Shell;
-        ${activateCode}
-      `;
+      if (isProtocolOrUrl || isLnk || isShell) {
+        psCommand = `Start-Process -FilePath '${escapedTarget}'`;
+      } else if (args.length > 0) {
+        const psArgs = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(', ');
+        psCommand = `Start-Process -FilePath '${escapedTarget}' -ArgumentList @(${psArgs}) -WindowStyle Normal`;
+      } else {
+        psCommand = `Start-Process -FilePath '${escapedTarget}' -WindowStyle Normal`;
+      }
 
-      const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
+      if (windowTitleHints.length > 0) {
+        const activateCode = windowTitleHints
+          .map((h) => `$ws.AppActivate('${h.replace(/'/g, "''")}');`)
+          .join(' ');
+        psCommand += `; Start-Sleep -Milliseconds 600; $ws = New-Object -ComObject WScript.Shell; ${activateCode}`;
+      }
+
+      const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCommand], {
         detached: true,
         stdio: 'ignore',
-        windowsHide: true,
       });
       p.unref();
 
@@ -325,6 +325,11 @@ export interface SystemCommandResult {
   actionNote?: string;
   directReply?: string;
   isPureCommand?: boolean;
+  clientAction?: {
+    type: 'open_url';
+    url: string;
+    label?: string;
+  };
 }
 
 export async function executeSystemCommand(rawMessage: string): Promise<SystemCommandResult> {
@@ -374,11 +379,17 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
 
     await sendWhatsAppMessage(msgToSend, contactName);
     const target = contactName || 'votre contact';
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msgToSend)}`;
     return {
       executed: true,
-      actionNote: `WhatsApp a été ouvert au premier plan sur l'écran avec le message prêt pour ${target} : "${msgToSend}".`,
-      directReply: `C'est fait Monsieur Roysten. WhatsApp est ouvert au premier plan avec votre message prêt pour ${target} : « ${msgToSend} ».`,
+      actionNote: `WhatsApp a été ouvert avec le message prêt pour ${target} : "${msgToSend}".`,
+      directReply: `C'est fait Monsieur Roysten. WhatsApp est ouvert avec votre message prêt pour ${target} : « ${msgToSend} ».\n\n👉 [💬 Ouvrir la discussion WhatsApp](${waUrl})`,
       isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: waUrl,
+        label: 'Ouvrir WhatsApp',
+      },
     };
   }
 
@@ -395,11 +406,17 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     }
     if (hasOpenVerb || lower === 'whatsapp' || lower === 'ouvre whatsapp' || lower === 'allume whatsapp') {
       await launchApp('whatsapp');
+      const waUrl = 'https://web.whatsapp.com';
       return {
         executed: true,
-        actionNote: 'WhatsApp Desktop a été ouvert au premier plan sur votre écran.',
-        directReply: 'WhatsApp Desktop est ouvert au premier plan sur votre écran, Monsieur.',
+        actionNote: 'WhatsApp a été ouvert sur votre écran.',
+        directReply: `WhatsApp est ouvert sur votre écran, Monsieur.\n\n👉 [💬 Ouvrir WhatsApp Web](${waUrl})`,
         isPureCommand: true,
+        clientAction: {
+          type: 'open_url',
+          url: waUrl,
+          label: 'Ouvrir WhatsApp',
+        },
       };
     }
   }
@@ -423,11 +440,17 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       };
     }
     await openVSCode();
+    const vsCodeUri = 'vscode://file/c:/Users/ADMIN/Documents/Jarvis';
     return {
       executed: true,
       actionNote: 'Visual Studio Code a été lancé au premier plan sur votre écran avec le projet Jarvis.',
-      directReply: 'À vos ordres, Monsieur Roysten. Visual Studio Code est ouvert au premier plan sur votre écran avec le projet Jarvis.',
+      directReply: `À vos ordres, Monsieur Roysten. Visual Studio Code est ouvert au premier plan sur votre écran avec le projet Jarvis.\n\n👉 [💻 Basculer sur VS Code](${vsCodeUri})`,
       isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: vsCodeUri,
+        label: 'Basculer sur VS Code',
+      },
     };
   }
 
@@ -451,15 +474,23 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       query = match[1].trim();
     }
     await playSpotify(query);
+    const spotifyUrl = query
+      ? `https://open.spotify.com/search/${encodeURIComponent(query)}`
+      : 'https://open.spotify.com';
     return {
       executed: true,
       actionNote: query
         ? `Spotify a été lancé et recherche "${query}" pour lecture immédiate.`
         : `Spotify a été lancé au premier plan sur votre écran.`,
       directReply: query
-        ? `Tout de suite Monsieur. Spotify est activé au premier plan avec « ${query} ».`
-        : `Très bien Monsieur Roysten, Spotify est lancé au premier plan sur votre écran.`,
+        ? `Tout de suite Monsieur. Spotify est activé avec « ${query} ».\n\n👉 [🎵 Écouter sur Spotify Web](${spotifyUrl})`
+        : `Très bien Monsieur Roysten, Spotify est activé sur votre écran.\n\n👉 [🎵 Ouvrir le lecteur Spotify](${spotifyUrl})`,
       isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: spotifyUrl,
+        label: 'Ouvrir Spotify',
+      },
     };
   }
 
@@ -470,11 +501,17 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       return { executed: true, actionNote: 'Canva a été fermé.', directReply: 'Canva a été fermé, Monsieur.', isPureCommand: true };
     }
     await launchApp('canva');
+    const canvaUrl = 'https://www.canva.com';
     return {
       executed: true,
-      actionNote: 'Canva a été ouvert au premier plan sur votre écran.',
-      directReply: 'Canva est ouvert au premier plan sur votre écran, Monsieur.',
+      actionNote: 'Canva a été ouvert sur votre écran.',
+      directReply: `Canva est ouvert sur votre écran, Monsieur.\n\n👉 [🎨 Accéder à Canva](${canvaUrl})`,
       isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: canvaUrl,
+        label: 'Ouvrir Canva',
+      },
     };
   }
 
@@ -485,11 +522,17 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       return { executed: true, actionNote: 'CapCut a été fermé.', directReply: 'CapCut a été fermé, Monsieur.', isPureCommand: true };
     }
     await launchApp('capcut');
+    const capcutUrl = 'https://www.capcut.com/editor';
     return {
       executed: true,
       actionNote: 'CapCut a été ouvert au premier plan sur votre écran.',
-      directReply: 'CapCut est lancé au premier plan sur votre écran pour vos montages, Monsieur.',
+      directReply: `CapCut est lancé au premier plan sur votre écran pour vos montages, Monsieur.\n\n👉 [🎬 Accéder à CapCut](${capcutUrl})`,
       isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: capcutUrl,
+        label: 'Ouvrir CapCut',
+      },
     };
   }
 
@@ -503,7 +546,7 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     return {
       executed: true,
       actionNote: 'Microsoft Word a été ouvert au premier plan sur votre écran.',
-      directReply: 'Microsoft Word est ouvert au premier plan, Monsieur.',
+      directReply: 'Microsoft Word est ouvert au premier plan sur votre écran, Monsieur.',
       isPureCommand: true,
     };
   }
@@ -517,7 +560,7 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     return {
       executed: true,
       actionNote: 'Microsoft Excel a été ouvert au premier plan sur votre écran.',
-      directReply: 'Microsoft Excel est ouvert au premier plan, Monsieur.',
+      directReply: 'Microsoft Excel est ouvert au premier plan sur votre écran, Monsieur.',
       isPureCommand: true,
     };
   }
@@ -531,7 +574,7 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     return {
       executed: true,
       actionNote: 'Microsoft PowerPoint a été ouvert au premier plan sur votre écran.',
-      directReply: 'Microsoft PowerPoint est ouvert au premier plan, Monsieur.',
+      directReply: 'Microsoft PowerPoint est ouvert au premier plan sur votre écran, Monsieur.',
       isPureCommand: true,
     };
   }
@@ -540,13 +583,21 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
   if (lower.includes('youtube')) {
     const match = message.match(/cherche\s+(.*?)\s+sur\s+youtube/i) || message.match(/sur\s+youtube\s+(.*)/i);
     const query = match ? match[1].trim() : '';
+    const ytUrl = query
+      ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
+      : 'https://youtube.com';
     if (query) {
       await searchYouTube(query);
       return {
         executed: true,
         actionNote: `YouTube a été ouvert avec la recherche : "${query}".`,
-        directReply: `J'ai ouvert YouTube avec votre recherche « ${query} », Monsieur.`,
+        directReply: `J'ai ouvert YouTube avec votre recherche « ${query} », Monsieur.\n\n👉 [▶️ Regarder sur YouTube](${ytUrl})`,
         isPureCommand: true,
+        clientAction: {
+          type: 'open_url',
+          url: ytUrl,
+          label: 'Ouvrir YouTube',
+        },
       };
     }
     if (hasOpenVerb || lower === 'youtube') {
@@ -554,8 +605,13 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       return {
         executed: true,
         actionNote: 'YouTube a été ouvert dans votre navigateur.',
-        directReply: 'YouTube est ouvert dans votre navigateur, Monsieur.',
+        directReply: `YouTube est ouvert dans votre navigateur, Monsieur.\n\n👉 [▶️ Accéder à YouTube](${ytUrl})`,
         isPureCommand: true,
+        clientAction: {
+          type: 'open_url',
+          url: ytUrl,
+          label: 'Ouvrir YouTube',
+        },
       };
     }
   }
@@ -563,12 +619,20 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
   if (lower.includes('google') && (lower.includes('cherche') || lower.includes('trouve'))) {
     const match = message.match(/cherche\s+(.*?)\s+sur\s+google/i);
     const query = match ? match[1].trim() : '';
+    const gUrl = query
+      ? `https://www.google.com/search?q=${encodeURIComponent(query)}`
+      : 'https://google.com';
     await searchGoogle(query);
     return {
       executed: true,
       actionNote: `Google a été ouvert avec la recherche : "${query}".`,
-      directReply: `Google Chrome est ouvert avec votre recherche « ${query} », Monsieur.`,
+      directReply: `Google Chrome est ouvert avec votre recherche « ${query} », Monsieur.\n\n👉 [🔍 Voir sur Google](${gUrl})`,
       isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: gUrl,
+        label: 'Ouvrir Google',
+      },
     };
   }
 

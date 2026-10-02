@@ -121,6 +121,13 @@ export default function JarvisDashboard() {
                   setStreamingContent((prev) => prev + parsed.content);
                   feedSpeechBuffer(parsed.content);
                 }
+                if (parsed.clientAction && parsed.clientAction.url) {
+                  try {
+                    window.open(parsed.clientAction.url, '_blank');
+                  } catch (e) {
+                    console.error('[CLIENT ACTION]', e);
+                  }
+                }
               } catch (e) {}
             }
           }
