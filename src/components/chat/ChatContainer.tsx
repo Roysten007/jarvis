@@ -3,6 +3,8 @@
 import React, { useRef, useEffect } from 'react';
 import { Bot, User, Copy, Check, Terminal, ExternalLink } from 'lucide-react';
 
+import { ArcReactorWake } from '../hud/ArcReactorWake';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -15,9 +17,15 @@ interface ChatContainerProps {
   messages: Message[];
   isLoading: boolean;
   streamingContent?: string;
+  onVoiceCommand?: (cmd: string) => void;
 }
 
-export function ChatContainer({ messages, isLoading, streamingContent }: ChatContainerProps) {
+export function ChatContainer({
+  messages,
+  isLoading,
+  streamingContent,
+  onVoiceCommand,
+}: ChatContainerProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
 
@@ -32,27 +40,32 @@ export function ChatContainer({ messages, isLoading, streamingContent }: ChatCon
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-sm hud-grid">
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-sm hud-grid flex flex-col">
       {messages.length === 0 && !streamingContent && (
-        <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
-          <div className="w-16 h-16 rounded-full border border-cyan-500/30 flex items-center justify-center bg-cyan-950/20 mb-4 shadow-hud-cyan animate-pulse">
-            <Bot className="w-8 h-8 text-cyan-400" />
-          </div>
-          <h2 className="text-base font-bold text-slate-200 glow-cyan mb-2">
-            J.A.R.V.I.S // SYSTÈME INITIALISÉ
+        <div className="my-auto flex flex-col items-center justify-center text-center p-4 text-slate-500">
+          {/* Réacteur Arc Interactif avec Wake Word 'JARVIS' */}
+          <ArcReactorWake
+            onCommandReceived={(cmd) => onVoiceCommand && onVoiceCommand(cmd)}
+            isProcessing={isLoading}
+            activeStatusText="Dites simplement 'JARVIS...' ou touchez pour ordonner sans clavier"
+          />
+
+          <h2 className="text-base font-bold text-slate-200 glow-cyan mt-3 mb-1">
+            J.A.R.V.I.S // TERMINAL HOLOGRAPHIQUE
           </h2>
-          <p className="max-w-md text-xs text-slate-400 leading-relaxed">
-            À vos ordres, Monsieur Roysten. Je suis connecté à vos bases de données, vos outils de recherche, votre moteur d'études et vos agents autonomes.
+          <p className="max-w-md text-xs text-slate-400 leading-relaxed font-sans">
+            À vos ordres, Monsieur Roysten. Parlez directement ou touchez l'écran. Je peux analyser vos e-mails, WhatsApp, vos devoirs en maths/physique ou inspecter votre écran.
           </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-2 text-[11px]">
+
+          <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px]">
             <span className="bg-slate-900/80 border border-cyan-500/20 px-2.5 py-1 rounded text-cyan-300">
-              ⚡ Modèle 550B & 11B actifs
+              🎙️ Wake Word : "Jarvis" / "Réveille-toi"
             </span>
             <span className="bg-slate-900/80 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-300">
-              🧠 Mémoire persistante connectée
+              📲 WhatsApp & LinkedIn connectés
             </span>
             <span className="bg-slate-900/80 border border-amber-500/20 px-2.5 py-1 rounded text-amber-300">
-              🎙️ Vocal français opérationnel
+              👁️ Analyse d'écran par Ctrl+V
             </span>
           </div>
         </div>

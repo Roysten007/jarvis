@@ -210,6 +210,7 @@ export default function JarvisDashboard() {
                 messages={messages}
                 isLoading={isLoading}
                 streamingContent={streamingContent}
+                onVoiceCommand={(cmd) => handleSendMessage(cmd)}
               />
               <ChatInput
                 onSendMessage={handleSendMessage}
