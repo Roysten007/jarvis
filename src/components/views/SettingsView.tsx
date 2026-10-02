@@ -124,6 +124,102 @@ export function SettingsView({ currentModel, onModelChange }: SettingsViewProps)
         </div>
       </div>
 
+      {/* Studio Vocal & Audio Clone */}
+      <div className="hud-panel p-4 rounded-lg border-cyan-500/20 space-y-4">
+        <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
+          <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs">
+            <Sparkles className="w-4 h-4 text-cyan-400" />
+            <span>STUDIO VOCAL & CLONAGE D'ÉCHANTILLON AUDIO :</span>
+          </div>
+          <span className="text-[10px] text-slate-400">Personnalisation Voix Roysten</span>
+        </div>
+
+        <p className="text-[11px] text-slate-400 font-sans">
+          Fournissez un fichier audio de votre voix (.mp3, .wav, .m4a) ou configurez la voix de synthèse Windows/Chrome pour qu'elle corresponde exactement à votre tonalité.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Upload Échantillon Audio */}
+          <div className="bg-[#070b16] border border-cyan-500/30 rounded p-3 space-y-2">
+            <span className="text-[11px] font-bold text-slate-200 block">
+              1. Importer un échantillon vocal (Voix Roysten)
+            </span>
+            <input
+              type="file"
+              accept="audio/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const b64 = reader.result as string;
+                    localStorage.setItem('jarvis_custom_voice_sample', b64);
+                    alert(`Échantillon vocal "${file.name}" enregistré avec succès pour JARVIS !`);
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }}
+              className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-[11px] file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
+            />
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const sample = localStorage.getItem('jarvis_custom_voice_sample');
+                  if (!sample) {
+                    alert('Aucun échantillon audio n\'est encore enregistré. Veuillez en importer un ci-dessus.');
+                    return;
+                  }
+                  const audio = new Audio(sample);
+                  audio.play();
+                }}
+                className="px-2.5 py-1 bg-slate-900 border border-slate-700 text-slate-200 rounded hover:border-cyan-400 hover:text-cyan-300 text-[11px]"
+              >
+                ▶ Écouter mon échantillon
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('jarvis_custom_voice_sample');
+                  alert('Échantillon audio retiré.');
+                }}
+                className="px-2.5 py-1 bg-slate-900 border border-rose-900/50 text-rose-300 rounded hover:bg-rose-950/30 text-[11px]"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+
+          {/* Test & Ajustement rapide TTS */}
+          <div className="bg-[#070b16] border border-cyan-500/30 rounded p-3 space-y-2">
+            <span className="text-[11px] font-bold text-slate-200 block">
+              2. Test Synthèse Vocale Futuriste
+            </span>
+            <p className="text-[10px] text-slate-400">
+              Voix de majordome avec pitch ajusté et débit optimisé en français.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.speechSynthesis) {
+                    window.speechSynthesis.cancel();
+                    const u = new SpeechSynthesisUtterance('À vos ordres, Monsieur Roysten. JARVIS est paré et opérationnel.');
+                    u.lang = 'fr-FR';
+                    u.rate = parseFloat(localStorage.getItem('jarvis_voice_rate') || '1.05');
+                    u.pitch = parseFloat(localStorage.getItem('jarvis_voice_pitch') || '0.92');
+                    window.speechSynthesis.speak(u);
+                  }
+                }}
+                className="px-3 py-1 bg-cyan-500/20 border border-cyan-400 text-cyan-300 rounded hover:bg-cyan-500/30 text-[11px] font-bold"
+              >
+                Tester la voix de Jarvis
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Personnalité & Prompt Système */}
       <div className="hud-panel p-4 rounded-lg border-cyan-500/20 space-y-3">
         <div className="flex items-center justify-between">

@@ -1,63 +1,56 @@
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
-// Exécution d'une commande shell avec promesse
-export function runCommandAsync(cmd: string): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    exec(cmd, { windowsHide: true }, (error, stdout, stderr) => {
-      if (error) {
-        resolve({ stdout, stderr: error.message || stderr });
-      } else {
-        resolve({ stdout, stderr });
-      }
-    });
+// Exécution d'une application ou URL en processus Windows détaché
+export function launchDetached(target: string, args: string[] = []): Promise<{ success: boolean; message: string }> {
+  return new Promise((resolve) => {
+    try {
+      const fullArgs = ['/c', 'start', '', target, ...args];
+      const p = spawn('cmd.exe', fullArgs, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: false,
+      });
+      p.unref();
+      resolve({ success: true, message: `Lancé avec succès : ${target}` });
+    } catch (err: any) {
+      resolve({ success: false, message: `Erreur de lancement : ${err.message}` });
+    }
   });
 }
 
 // 1. OUVRIR UNE APPLICATION SUR L'ORDINATEUR
 export async function launchApp(appName: string, targetPath?: string): Promise<{ success: boolean; message: string }> {
   const name = appName.toLowerCase().trim();
-  let command = '';
-
-  const target = targetPath ? `"${targetPath}"` : '';
+  const vscodePath = `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe`;
 
   if (name.includes('code') || name.includes('vs')) {
-    command = target ? `start "" code ${target}` : `start "" code`;
+    if (fs.existsSync(vscodePath)) {
+      return launchDetached(vscodePath, targetPath ? [targetPath] : []);
+    } else {
+      return launchDetached('code', targetPath ? [targetPath] : []);
+    }
   } else if (name.includes('chrome')) {
-    command = target ? `start chrome ${target}` : `start chrome`;
+    return launchDetached('chrome', targetPath ? [targetPath] : []);
   } else if (name.includes('edge')) {
-    command = target ? `start msedge ${target}` : `start msedge`;
-  } else if (name.includes('bloc') || name.includes('note') || name.includes('pad')) {
-    command = target ? `start notepad ${target}` : `start notepad`;
+    return launchDetached('msedge', targetPath ? [targetPath] : []);
+  } else if (name.includes('notepad') || name.includes('bloc')) {
+    return launchDetached('notepad', targetPath ? [targetPath] : []);
   } else if (name.includes('calc')) {
-    command = `start calc`;
+    return launchDetached('calc.exe');
   } else if (name.includes('explorer') || name.includes('dossier') || name.includes('fichier')) {
     const p = targetPath || path.join(os.homedir(), 'Documents');
-    command = `start explorer "${p}"`;
+    return launchDetached('explorer', [p]);
   } else if (name.includes('terminal') || name.includes('powershell')) {
-    command = `start powershell`;
+    return launchDetached('powershell');
   } else if (name.includes('spotify')) {
-    command = `start spotify:`;
+    return launchDetached('spotify:');
   } else if (name.includes('whatsapp')) {
-    command = `start whatsapp:`;
+    return launchDetached('whatsapp:');
   } else {
-    // Tentative d'ouverture générique Windows
-    command = `start "" "${appName}"`;
-  }
-
-  try {
-    await runCommandAsync(command);
-    return {
-      success: true,
-      message: `Application "${appName}" lancée avec succès sur votre ordinateur.`,
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      message: `Impossible de lancer l'application : ${err.message}`,
-    };
+    return launchDetached(appName, targetPath ? [targetPath] : []);
   }
 }
 
@@ -65,8 +58,7 @@ export async function launchApp(appName: string, targetPath?: string): Promise<{
 export async function openUrl(url: string): Promise<{ success: boolean; message: string }> {
   try {
     const validUrl = url.startsWith('http') ? url : `https://${url}`;
-    await runCommandAsync(`start "" "${validUrl}"`);
-    return { success: true, message: `URL "${validUrl}" ouverte sur l'ordinateur.` };
+    return launchDetached(validUrl);
   } catch (e: any) {
     return { success: false, message: `Erreur ouverture URL : ${e.message}` };
   }

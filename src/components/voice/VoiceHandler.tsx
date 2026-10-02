@@ -184,23 +184,66 @@ export function VoiceHandler({
 
   // Basculer l'écoute
   const toggleListening = () => {
-    if (!recognitionRef.current) return;
-
     if (isListening) {
-      recognitionRef.current.stop();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
       setIsListening(false);
     } else {
-      try {
-        if (window.speechSynthesis) {
-          window.speechSynthesis.cancel();
-          speechQueueRef.current = [];
-          isPlayingQueueRef.current = false;
-          setIsSpeaking(false);
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        speechQueueRef.current = [];
+        isPlayingQueueRef.current = false;
+        setIsSpeaking(false);
+      }
+
+      if (!speechSupported) {
+        // Tenter de réinitialiser à la volée ou demander la permission micro
+        const SpeechRecognition =
+          (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+        if (SpeechRecognition) {
+          const rec = new SpeechRecognition();
+          rec.lang = 'fr-FR';
+          rec.continuous = false;
+          rec.interimResults = false;
+          rec.onresult = (ev: any) => {
+            const transcript = ev.results[0][0].transcript;
+            if (transcript) {
+              playHudReceive();
+              onSpeechResult(transcript);
+            }
+          };
+          rec.onend = () => setIsListening(false);
+          rec.onerror = () => setIsListening(false);
+          recognitionRef.current = rec;
+          setSpeechSupported(true);
+          try {
+            playMicOpen();
+            rec.start();
+            setIsListening(true);
+            return;
+          } catch (e) {}
         }
+
+        // Si le navigateur ne supporte pas l'API ou permission refusée
+        alert(
+          '🎙️ Reconnaissance Vocale JARVIS :\n\n' +
+            'Pour parler au microphone, utilisez Google Chrome ou Microsoft Edge et autorisez l\'accès au micro dans la barre d\'adresse (icône cadenas/caméra).'
+        );
+        return;
+      }
+
+      try {
         playMicOpen();
-        recognitionRef.current.start();
+        recognitionRef.current?.start();
         setIsListening(true);
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Erreur start speech:', e);
+        setIsListening(false);
+      }
     }
   };
 
@@ -225,22 +268,30 @@ export function VoiceHandler({
     setShowSettings(false);
   };
 
-  if (!speechSupported) return null;
-
   return (
     <div className="flex items-center gap-1.5 font-mono text-xs relative">
-      {/* Bouton Micro */}
+      {/* Bouton Micro Principal Toujours Visible */}
       <button
         type="button"
         onClick={toggleListening}
         title={isListening ? 'Arrêter l\'écoute' : 'Parler à Jarvis (Microphone)'}
-        className={`p-2 rounded-lg border transition-all flex items-center justify-center ${
+        className={`px-2.5 py-2 rounded-lg border font-bold text-xs transition-all flex items-center gap-1.5 ${
           isListening
             ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-hud-amber animate-pulse'
-            : 'bg-slate-900/70 border-slate-700 text-slate-300 hover:border-cyan-500/40 hover:text-cyan-400'
+            : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 shadow-hud-cyan'
         }`}
       >
-        {isListening ? <Mic className="w-4 h-4 text-amber-400" /> : <MicOff className="w-4 h-4" />}
+        {isListening ? (
+          <>
+            <Mic className="w-4 h-4 text-amber-400 animate-bounce" />
+            <span className="text-[11px] text-amber-300">Écoute...</span>
+          </>
+        ) : (
+          <>
+            <Mic className="w-4 h-4 text-cyan-400" />
+            <span className="text-[11px] hidden sm:inline">Micro</span>
+          </>
+        )}
       </button>
 
       {/* Mode Mains Libres */}

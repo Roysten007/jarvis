@@ -4,13 +4,23 @@ import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Cpu, Clock, Mic, Sparkles, Activity } from 'lucide-react';
 import { JARVIS_CONFIG } from '@/lib/config';
 
+import { ArcReactorWake } from './ArcReactorWake';
+
 interface HeaderProps {
   currentModel: string;
   onModelChange: (model: string) => void;
   isListening?: boolean;
+  onVoiceCommand?: (cmd: string) => void;
+  isLoading?: boolean;
 }
 
-export function Header({ currentModel, onModelChange, isListening = false }: HeaderProps) {
+export function Header({
+  currentModel,
+  onModelChange,
+  isListening = false,
+  onVoiceCommand,
+  isLoading = false,
+}: HeaderProps) {
   const [time, setTime] = useState<string>('');
 
   useEffect(() => {
@@ -51,8 +61,19 @@ export function Header({ currentModel, onModelChange, isListening = false }: Hea
         </div>
       </div>
 
+      {/* Wake Word Engine & Réacteur Vocal Actif 24/7 */}
+      {onVoiceCommand && (
+        <div className="flex items-center">
+          <ArcReactorWake
+            compact
+            onCommandReceived={onVoiceCommand}
+            isProcessing={isLoading}
+          />
+        </div>
+      )}
+
       {/* Sélecteur de Modèle & Télémétrie */}
-      <div className="hidden md:flex items-center gap-4">
+      <div className="hidden lg:flex items-center gap-4">
         {/* Sélecteur de modèle */}
         <div className="flex items-center gap-1.5 bg-[#0a1122] border border-cyan-500/30 rounded-md px-2 py-1">
           <Cpu className="w-3.5 h-3.5 text-cyan-400" />
@@ -82,14 +103,8 @@ export function Header({ currentModel, onModelChange, isListening = false }: Hea
         </div>
       </div>
 
-      {/* Horloge Bénin & Statut Vocal */}
+      {/* Horloge Bénin & Statut */}
       <div className="flex items-center gap-3">
-        {isListening && (
-          <div className="flex items-center gap-1 text-amber-400 animate-pulse bg-amber-950/40 border border-amber-500/40 px-2 py-0.5 rounded text-[10px]">
-            <Mic className="w-3 h-3" />
-            <span>ÉCOUTE ACTIVE</span>
-          </div>
-        )}
         <div className="flex items-center gap-1.5 text-cyan-300 bg-cyan-950/30 border border-cyan-500/20 px-2.5 py-1 rounded">
           <Clock className="w-3.5 h-3.5 text-cyan-400" />
           <span className="font-bold">{time || '--:--:--'}</span>

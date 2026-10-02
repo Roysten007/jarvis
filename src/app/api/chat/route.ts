@@ -36,19 +36,67 @@ export async function POST(req: NextRequest) {
       content: image ? `${message}\n\n[Capture d'écran / Image analysée]` : message,
     });
 
-    // 3. Rappel des souvenirs pertinents pour Roysten
+    // 3. Détection et exécution réelle des ordres système sur Windows
+    let actionExecutedNote = '';
+    const lower = message.toLowerCase();
+
+    if (lower.includes('ouvre') || lower.includes('lance') || lower.includes('demarre') || lower.includes('démarrer') || lower.includes('start')) {
+      const { launchApp, openUrl } = await import('@/lib/system-controller');
+
+      if (lower.includes('vs') || lower.includes('code')) {
+        await launchApp('vscode');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Visual Studio Code a été lancé physiquement sur votre écran Windows.';
+      } else if (lower.includes('calc')) {
+        await launchApp('calc');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : La calculatrice a été lancée sur votre écran.';
+      } else if (lower.includes('notepad') || lower.includes('bloc')) {
+        await launchApp('notepad');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le bloc-notes a été ouvert sur votre bureau.';
+      } else if (lower.includes('chrome')) {
+        await launchApp('chrome');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Google Chrome a été lancé.';
+      } else if (lower.includes('explorer') || lower.includes('fichier') || lower.includes('dossier')) {
+        await launchApp('explorer');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : L\'explorateur de fichiers a été ouvert.';
+      } else if (lower.includes('terminal') || lower.includes('powershell')) {
+        await launchApp('terminal');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le terminal PowerShell a été ouvert.';
+      } else if (lower.includes('spotify')) {
+        await launchApp('spotify');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Spotify a été lancé.';
+      } else if (lower.includes('whatsapp')) {
+        await launchApp('whatsapp');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : WhatsApp Desktop a été lancé.';
+      } else if (lower.includes('youtube')) {
+        await openUrl('https://youtube.com');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : YouTube a été ouvert dans votre navigateur.';
+      } else if (lower.includes('github')) {
+        await openUrl('https://github.com');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : GitHub a été ouvert dans votre navigateur.';
+      }
+    }
+
+    // 3.5 Détection demande de point / briefing
+    if (lower.includes('point sur') || lower.includes('fais-moi le point') || lower.includes('fais le point') || lower.includes('briefing')) {
+      const { generateMorningBriefing } = await import('@/lib/briefing-service');
+      const briefingData = await generateMorningBriefing(userEmail);
+      actionExecutedNote = `✓ [DONNÉES DU POINT EN TEMPS RÉEL RÉCUPÉRÉES] : ${briefingData}`;
+    }
+
+    // 4. Rappel des souvenirs pertinents pour Roysten
     const relevantMemoriesContext = await getRelevantMemories(userEmail, message);
 
-    // 4. Récupérer l'historique récent de la conversation (derniers 10 messages)
+    // 5. Récupérer l'historique récent de la conversation
     const history = await getMessages(convId);
     const recentHistory: ChatMessage[] = history.slice(-8).map((m: any) => ({
       role: m.role as any,
       content: m.content,
     }));
 
-    // 5. Assembler le prompt système complet avec souvenirs injectés
+    // 6. Assembler le prompt système complet avec consigne d'action réelle
     const fullSystemPrompt = `${JARVIS_CONFIG.defaultSystemPrompt}
-${relevantMemoriesContext}`;
+${relevantMemoriesContext}
+${actionExecutedNote ? `\n[NOTE SYSTÈME CRITIQUE : Tu viens d'exécuter réellement cette action ou de récupérer ces données pour Roysten : "${actionExecutedNote}".\nINTERDICTION FORMELLE : Ne simule JAMAIS une ouverture d'application dans ta réponse, ne dessine AUCUN faux bloc de code ou cadre ASCII pour faire semblant d'être une application, ne dis JAMAIS que tu vas simuler. Confirme sobrement et avec la classe d'un majordome futuriste que l'ordre est exécuté.]` : ''}`;
 
     // Préparer le message utilisateur actuel (avec image si fournie)
     const userCurrentContent: any = image

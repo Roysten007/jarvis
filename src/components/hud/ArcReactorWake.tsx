@@ -8,12 +8,14 @@ interface ArcReactorWakeProps {
   onCommandReceived: (command: string) => void;
   isProcessing: boolean;
   activeStatusText?: string;
+  compact?: boolean;
 }
 
 export function ArcReactorWake({
   onCommandReceived,
   isProcessing,
   activeStatusText,
+  compact = false,
 }: ArcReactorWakeProps) {
   const [isAwake, setIsAwake] = useState(false);
   const [interimText, setInterimText] = useState('');
@@ -55,7 +57,7 @@ export function ArcReactorWake({
         const command = parts.length > 1 ? parts.slice(1).join(' ').trim() : '';
 
         // Si une commande concrète est déjà prononcée
-        if (command.length > 5 && event.results[event.results.length - 1].isFinal) {
+        if (command.length > 3 && event.results[event.results.length - 1].isFinal) {
           playHudTransmit();
           onCommandReceived(command);
           setInterimText('');
@@ -110,6 +112,41 @@ export function ArcReactorWake({
       } catch (e) {}
     }
   };
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2 select-none">
+        <button
+          type="button"
+          onClick={handleTapWake}
+          title="Dites 'JARVIS' ou touchez pour commander sans clavier"
+          className={`flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all ${
+            isAwake
+              ? 'bg-amber-500/25 border-amber-400 text-amber-300 shadow-hud-amber animate-pulse'
+              : isProcessing
+              ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-hud-cyan animate-pulse'
+              : 'bg-cyan-950/40 border-cyan-500/30 text-cyan-400 hover:border-cyan-400 hover:bg-cyan-900/30'
+          }`}
+        >
+          <div className="relative w-3.5 h-3.5 rounded-full border border-cyan-400/50 flex items-center justify-center">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                isAwake ? 'bg-amber-400 animate-ping' : isProcessing ? 'bg-cyan-400 animate-ping' : 'bg-cyan-400'
+              }`}
+            />
+          </div>
+          <span className="text-[10px] font-mono font-bold tracking-wider">
+            {isAwake ? 'JARVIS À L\'ÉCOUTE' : isProcessing ? 'EXÉCUTION...' : 'WAKE: "JARVIS"'}
+          </span>
+        </button>
+        {interimText && (
+          <span className="text-[10px] text-cyan-300 italic truncate max-w-[140px] hidden sm:inline">
+            "{interimText}"
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center p-4 select-none">

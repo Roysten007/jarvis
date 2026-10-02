@@ -196,6 +196,8 @@ export default function JarvisDashboard() {
         currentModel={currentModel}
         onModelChange={setCurrentModel}
         isListening={false}
+        onVoiceCommand={(cmd) => handleSendMessage(cmd)}
+        isLoading={isLoading}
       />
 
       {/* Main Layout */}
