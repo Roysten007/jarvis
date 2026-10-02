@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from '@/components/hud/Header';
 import { Navigation, NavTab } from '@/components/hud/Navigation';
 import { ChatContainer, Message } from '@/components/chat/ChatContainer';
@@ -9,10 +9,12 @@ import { MemoryView } from '@/components/views/MemoryView';
 import { AgentView } from '@/components/views/AgentView';
 import { StudyView } from '@/components/views/StudyView';
 import { ProspectionView } from '@/components/views/ProspectionView';
+import { SocialMediaView } from '@/components/views/SocialMediaView';
 import { EnglishView } from '@/components/views/EnglishView';
 import { TasksView } from '@/components/views/TasksView';
 import { SettingsView } from '@/components/views/SettingsView';
 import { JARVIS_CONFIG } from '@/lib/config';
+import { playHudReceive } from '@/lib/audio-effects';
 
 export default function JarvisDashboard() {
   const [activeTab, setActiveTab] = useState<NavTab>('chat');
@@ -21,7 +23,9 @@ export default function JarvisDashboard() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [streamingContent, setStreamingContent] = useState<string>('');
-  const [voiceTextToSpeak, setVoiceTextToSpeak] = useState<string>('');
+  const [streamChunkToSpeak, setStreamChunkToSpeak] = useState<string>('');
+
+  const speechSentenceBufferRef = useRef<string>('');
 
   // Enregistrement du Service Worker PWA
   useEffect(() => {
@@ -32,28 +36,44 @@ export default function JarvisDashboard() {
     }
   }, []);
 
-  // Nouvelle session
+  // Réinitialiser la session
   const handleNewSession = useCallback(() => {
     setConversationId(null);
     setMessages([]);
     setStreamingContent('');
-    setVoiceTextToSpeak('Nouvelle session initialisée, Monsieur. Que puis-je faire pour vous ?');
+    setStreamChunkToSpeak('Nouvelle session initialisée, Monsieur Roysten.');
   }, []);
 
-  // Envoi de message avec streaming SSE
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
+  // Découpage et envoi au TTS en flux phrase par phrase
+  const feedSpeechBuffer = (delta: string) => {
+    speechSentenceBufferRef.current += delta;
+    // Détection des fins de phrases (. ! ? \n)
+    const match = speechSentenceBufferRef.current.match(/^([\s\S]*?[.!?\n]+)([\s\S]*)$/);
+    if (match) {
+      const sentence = match[1].trim();
+      speechSentenceBufferRef.current = match[2];
+      if (sentence.length > 2) {
+        setStreamChunkToSpeak(sentence);
+      }
+    }
+  };
+
+  // Envoi de message avec streaming SSE et support image/capture d'écran
+  const handleSendMessage = async (text: string, image?: string) => {
+    if (!text.trim() && !image) return;
+    if (isLoading) return;
 
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: text,
+      content: image ? `${text}\n\n[Capture d'écran jointe]` : text,
       createdAt: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
     setStreamingContent('');
+    speechSentenceBufferRef.current = '';
 
     try {
       const response = await fetch('/api/chat', {
@@ -61,6 +81,7 @@ export default function JarvisDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
+          image,
           conversationId,
           model: currentModel,
           stream: true,
@@ -71,7 +92,6 @@ export default function JarvisDashboard() {
         throw new Error(`Erreur serveur (${response.status})`);
       }
 
-      // Traitement du flux SSE
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let accumulated = '';
@@ -98,17 +118,23 @@ export default function JarvisDashboard() {
                 if (parsed.content) {
                   accumulated += parsed.content;
                   setStreamingContent((prev) => prev + parsed.content);
+                  feedSpeechBuffer(parsed.content);
                 }
-              } catch (e) {
-                // fragment partiel
-              }
+              } catch (e) {}
             }
           }
         }
       }
 
-      // Finalisation du message
+      // Vider le reste du buffer vocal s'il restait une phrase sans point final
+      if (speechSentenceBufferRef.current.trim()) {
+        setStreamChunkToSpeak(speechSentenceBufferRef.current.trim());
+        speechSentenceBufferRef.current = '';
+      }
+
+      // Enregistrement final dans l'interface
       if (accumulated) {
+        playHudReceive();
         const assistantMsg: Message = {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
@@ -116,14 +142,13 @@ export default function JarvisDashboard() {
           createdAt: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, assistantMsg]);
-        setVoiceTextToSpeak(accumulated);
       }
     } catch (err: any) {
       console.error('[CHAT ERROR]', err);
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: `Erreur de communication avec le cœur système : ${err.message}. Bascule sur les protocoles de secours.`,
+        content: `Erreur de transmission : ${err.message}. Reconnexion aux circuits auxiliaires.`,
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -141,6 +166,7 @@ export default function JarvisDashboard() {
         const res = await fetch('/api/tools/briefing');
         const data = await res.json();
         if (data.briefing) {
+          playHudReceive();
           const msg: Message = {
             id: `briefing-${Date.now()}`,
             role: 'assistant',
@@ -148,7 +174,7 @@ export default function JarvisDashboard() {
             createdAt: new Date().toISOString(),
           };
           setMessages((prev) => [...prev, msg]);
-          setVoiceTextToSpeak(data.briefing);
+          setStreamChunkToSpeak(data.briefing);
         }
       } catch (e: any) {
         console.error(e);
@@ -158,7 +184,7 @@ export default function JarvisDashboard() {
     } else if (action === 'web_search') {
       handleSendMessage('Effectue une recherche Web détaillée sur : ');
     } else if (action === 'calc') {
-      handleSendMessage('Calcule et explique la solution pour cette expression physique ou mathématique : ');
+      handleSendMessage('Calcule et détaille la solution physique ou mathématique pour : ');
     }
   };
 
@@ -189,7 +215,7 @@ export default function JarvisDashboard() {
                 onSendMessage={handleSendMessage}
                 isLoading={isLoading}
                 onQuickAction={handleQuickAction}
-                voiceTextToSpeak={voiceTextToSpeak}
+                streamChunkToSpeak={streamChunkToSpeak}
                 onNewSession={handleNewSession}
               />
             </>
@@ -199,6 +225,7 @@ export default function JarvisDashboard() {
           {activeTab === 'agent' && <AgentView />}
           {activeTab === 'study' && <StudyView />}
           {activeTab === 'prospection' && <ProspectionView />}
+          {activeTab === 'social' && <SocialMediaView />}
           {activeTab === 'english' && <EnglishView />}
           {activeTab === 'tasks' && <TasksView />}
           {activeTab === 'settings' && (

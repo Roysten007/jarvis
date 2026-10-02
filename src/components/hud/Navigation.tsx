@@ -7,6 +7,7 @@ import {
   Zap,
   GraduationCap,
   TrendingUp,
+  Share2,
   Languages,
   CheckSquare,
   Settings,
@@ -18,6 +19,7 @@ export type NavTab =
   | 'agent'
   | 'study'
   | 'prospection'
+  | 'social'
   | 'english'
   | 'tasks'
   | 'settings';
@@ -30,9 +32,10 @@ interface NavigationProps {
 const TABS = [
   { id: 'chat' as NavTab, label: 'Terminal', icon: MessageSquare },
   { id: 'memory' as NavTab, label: 'Mémoire', icon: Brain },
-  { id: 'agent' as NavTab, label: 'Agent', icon: Zap },
+  { id: 'agent' as NavTab, label: 'Agent ReAct', icon: Zap },
   { id: 'study' as NavTab, label: 'Études', icon: GraduationCap },
   { id: 'prospection' as NavTab, label: 'Prospection', icon: TrendingUp },
+  { id: 'social' as NavTab, label: 'WhatsApp & Social', icon: Share2 },
   { id: 'english' as NavTab, label: 'Anglais', icon: Languages },
   { id: 'tasks' as NavTab, label: 'Missions', icon: CheckSquare },
   { id: 'settings' as NavTab, label: 'Paramètres', icon: Settings },

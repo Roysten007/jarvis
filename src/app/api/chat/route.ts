@@ -11,6 +11,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       message,
+      image,
       conversationId,
       model,
       stream = true,
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     await saveMessage({
       conversation_id: convId,
       role: 'user',
-      content: message,
+      content: image ? `${message}\n\n[Capture d'écran / Image analysée]` : message,
     });
 
     // 3. Rappel des souvenirs pertinents pour Roysten
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Récupérer l'historique récent de la conversation (derniers 10 messages)
     const history = await getMessages(convId);
-    const recentHistory: ChatMessage[] = history.slice(-10).map((m: any) => ({
+    const recentHistory: ChatMessage[] = history.slice(-8).map((m: any) => ({
       role: m.role as any,
       content: m.content,
     }));
@@ -49,12 +50,22 @@ export async function POST(req: NextRequest) {
     const fullSystemPrompt = `${JARVIS_CONFIG.defaultSystemPrompt}
 ${relevantMemoriesContext}`;
 
+    // Préparer le message utilisateur actuel (avec image si fournie)
+    const userCurrentContent: any = image
+      ? [
+          { type: 'text', text: message },
+          { type: 'image_url', image_url: { url: image } },
+        ]
+      : message;
+
     const promptMessages: ChatMessage[] = [
       { role: 'system', content: fullSystemPrompt },
-      ...recentHistory,
+      ...recentHistory.slice(0, -1),
+      { role: 'user', content: userCurrentContent },
     ];
 
-    const modelToUse = model || JARVIS_CONFIG.defaultFastModel;
+    // Si une image est fournie, forcer le modèle de vision
+    const modelToUse = image ? 'meta/llama-3.2-11b-vision-instruct' : (model || JARVIS_CONFIG.defaultFastModel);
 
     // Si streaming demandé
     if (stream) {
