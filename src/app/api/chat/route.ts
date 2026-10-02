@@ -40,7 +40,17 @@ export async function POST(req: NextRequest) {
     let actionExecutedNote = '';
     const lower = message.toLowerCase();
 
-    if (lower.includes('ouvre') || lower.includes('lance') || lower.includes('demarre') || lower.includes('démarrer') || lower.includes('start')) {
+    // 3.1 Ordres d'OUVERTURE / LANCEMENT
+    if (
+      lower.includes('ouvre') ||
+      lower.includes('lance') ||
+      lower.includes('demarre') ||
+      lower.includes('démarrer') ||
+      lower.includes('start') ||
+      lower.includes('mets de la musique') ||
+      lower.includes('joue de la musique') ||
+      lower.includes('va sur')
+    ) {
       const { launchApp, openUrl } = await import('@/lib/system-controller');
 
       if (lower.includes('vs') || lower.includes('code')) {
@@ -55,24 +65,72 @@ export async function POST(req: NextRequest) {
       } else if (lower.includes('chrome')) {
         await launchApp('chrome');
         actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Google Chrome a été lancé.';
-      } else if (lower.includes('explorer') || lower.includes('fichier') || lower.includes('dossier')) {
+      } else if (lower.includes('edge') || lower.includes('navigateur') || lower.includes('internet')) {
+        await launchApp('edge');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le navigateur Web a été ouvert.';
+      } else if (lower.includes('explorer') || lower.includes('fichier') || lower.includes('dossier') || lower.includes('document')) {
         await launchApp('explorer');
         actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : L\'explorateur de fichiers a été ouvert.';
-      } else if (lower.includes('terminal') || lower.includes('powershell')) {
+      } else if (lower.includes('terminal') || lower.includes('powershell') || lower.includes('console')) {
         await launchApp('terminal');
         actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le terminal PowerShell a été ouvert.';
-      } else if (lower.includes('spotify')) {
+      } else if (lower.includes('spotify') || lower.includes('musique') || lower.includes('chanson')) {
         await launchApp('spotify');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Spotify a été lancé.';
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Spotify a été lancé sur votre ordinateur.';
       } else if (lower.includes('whatsapp')) {
         await launchApp('whatsapp');
-        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : WhatsApp Desktop a été lancé.';
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : WhatsApp Desktop a été lancé sur votre écran.';
+      } else if (lower.includes('canva')) {
+        await launchApp('canva');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Canva a été ouvert pour vos designs.';
+      } else if (lower.includes('paint') || lower.includes('dessin')) {
+        await launchApp('paint');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Microsoft Paint a été ouvert.';
       } else if (lower.includes('youtube')) {
         await openUrl('https://youtube.com');
         actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : YouTube a été ouvert dans votre navigateur.';
+      } else if (lower.includes('facebook')) {
+        await openUrl('https://facebook.com');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Facebook a été ouvert dans votre navigateur.';
+      } else if (lower.includes('linkedin')) {
+        await openUrl('https://linkedin.com');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : LinkedIn a été ouvert dans votre navigateur.';
+      } else if (lower.includes('twitter') || lower.includes('sur x')) {
+        await openUrl('https://x.com');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : X (Twitter) a été ouvert dans votre navigateur.';
       } else if (lower.includes('github')) {
         await openUrl('https://github.com');
         actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : GitHub a été ouvert dans votre navigateur.';
+      } else if (lower.includes('google')) {
+        await openUrl('https://google.com');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Google a été ouvert dans votre navigateur.';
+      } else if (lower.includes('gmail') || lower.includes('mail')) {
+        await openUrl('https://mail.google.com');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Gmail a été ouvert dans votre navigateur.';
+      }
+    }
+
+    // 3.2 Ordres de FERMETURE d'applications
+    if (lower.includes('ferme') || lower.includes('quitte') || lower.includes('arrête') || lower.includes('arrete') || lower.includes('stop app')) {
+      const { closeApp } = await import('@/lib/system-controller');
+      if (lower.includes('vs') || lower.includes('code')) {
+        await closeApp('vscode');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Visual Studio Code a été fermé.';
+      } else if (lower.includes('chrome')) {
+        await closeApp('chrome');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Google Chrome a été fermé.';
+      } else if (lower.includes('calc')) {
+        await closeApp('calc');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : La calculatrice a été fermée.';
+      } else if (lower.includes('notepad') || lower.includes('bloc')) {
+        await closeApp('notepad');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Le bloc-notes a été fermé.';
+      } else if (lower.includes('spotify')) {
+        await closeApp('spotify');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : Spotify a été arrêté.';
+      } else if (lower.includes('whatsapp')) {
+        await closeApp('whatsapp');
+        actionExecutedNote = '✓ [ACTION SYSTÈME RÉELLE EXÉCUTÉE] : WhatsApp a été fermé.';
       }
     }
 

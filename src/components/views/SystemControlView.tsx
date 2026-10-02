@@ -112,6 +112,8 @@ export function SystemControlView() {
     { id: 'calc', name: 'Calculatrice', label: 'Calculs système', icon: Cpu, color: 'text-rose-400' },
     { id: 'spotify', name: 'Spotify', label: 'Musique & Focus', icon: Play, color: 'text-emerald-400' },
     { id: 'whatsapp', name: 'WhatsApp', label: 'Messagerie Desktop', icon: Smartphone, color: 'text-emerald-500' },
+    { id: 'canva', name: 'Canva', label: 'Design graphique', icon: Sparkles, color: 'text-purple-400' },
+    { id: 'youtube', name: 'YouTube', label: 'Vidéos & Tutos', icon: Play, color: 'text-rose-500' },
     { id: 'terminal', name: 'PowerShell', label: 'Invite de commandes', icon: Terminal, color: 'text-cyan-300' },
   ];
 

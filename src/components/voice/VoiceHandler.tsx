@@ -46,19 +46,24 @@ export function VoiceHandler({
 
         // Récupérer la voix sauvegardée ou chercher la meilleure voix française
         const savedVoice = localStorage.getItem('jarvis_voice_name');
-        if (savedVoice && available.some((v) => v.name === savedVoice)) {
+        const frVoices = available.filter((v) => v.lang.toLowerCase().startsWith('fr'));
+
+        if (savedVoice && frVoices.some((v) => v.name === savedVoice)) {
           setSelectedVoiceName(savedVoice);
-        } else {
-          // Priorité aux voix masculines françaises élégantes (ex: Paul, Henri, Thomas) ou voix naturelles
+        } else if (frVoices.length > 0) {
+          // Priorité aux voix françaises naturelles (Henri, Denise, Paul, Thomas, Google, etc.)
           const preferred =
-            available.find((v) => v.lang.startsWith('fr') && /paul|henri|thomas|guy|claude/i.test(v.name)) ||
-            available.find((v) => v.lang.startsWith('fr') && /natural|google/i.test(v.name)) ||
-            available.find((v) => v.lang.startsWith('fr')) ||
-            available[0];
+            frVoices.find((v) => /natural|online|henri|denise|paul|thomas|google|hortense/i.test(v.name)) ||
+            frVoices[0];
 
           if (preferred) {
             setSelectedVoiceName(preferred.name);
+            localStorage.setItem('jarvis_voice_name', preferred.name);
           }
+        } else {
+          // Aucune voix française locale détectée : laisser le navigateur utiliser sa voix française native fr-FR
+          setSelectedVoiceName('');
+          localStorage.removeItem('jarvis_voice_name');
         }
       }
     };
@@ -126,7 +131,9 @@ export function VoiceHandler({
     utterance.pitch = pitch;
 
     if (selectedVoiceName) {
-      const voiceObj = voices.find((v) => v.name === selectedVoiceName);
+      const voiceObj = voices.find(
+        (v) => v.name === selectedVoiceName && v.lang.toLowerCase().startsWith('fr')
+      );
       if (voiceObj) utterance.voice = voiceObj;
     }
 
@@ -352,16 +359,17 @@ export function VoiceHandler({
             </button>
           </div>
 
-          {/* Choix de la voix */}
+          {/* Choix de la voix (Français uniquement) */}
           <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Voix de synthèse :</label>
+            <label className="text-[10px] text-slate-400 block mb-1">Voix de synthèse (100% Français) :</label>
             <select
               value={selectedVoiceName}
               onChange={(e) => setSelectedVoiceName(e.target.value)}
               className="w-full bg-[#0c1427] border border-cyan-500/30 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-cyan-400"
             >
+              <option value="">Voix Française standard du système</option>
               {voices
-                .filter((v) => v.lang.startsWith('fr') || v.lang.startsWith('en'))
+                .filter((v) => v.lang.toLowerCase().startsWith('fr'))
                 .map((v) => (
                   <option key={v.name} value={v.name}>
                     {v.name} ({v.lang})
