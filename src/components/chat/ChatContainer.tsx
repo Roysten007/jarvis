@@ -30,8 +30,9 @@ export interface Message {
   createdAt?: string;
   toolCalls?: any;
   clientAction?: {
-    type: 'open_url';
-    url: string;
+    type: 'open_url' | 'screenshot' | 'switch_tab';
+    url?: string;
+    tab?: string;
     label?: string;
   };
 }
@@ -41,6 +42,10 @@ interface ChatContainerProps {
   isLoading: boolean;
   streamingContent?: string;
   onVoiceCommand?: (cmd: string) => void;
+  isSpeaking?: boolean;
+  isAwake?: boolean;
+  onTapWake?: () => void;
+  onTabChange?: (tab: any) => void;
 }
 
 interface ActionMeta {
@@ -211,7 +216,14 @@ function getActionMeta(url: string, label?: string): ActionMeta {
 }
 
 function extractActionUrl(msg: Message): { url: string; label?: string } | null {
-  if (msg.clientAction?.url && msg.clientAction.url.startsWith('http')) {
+  if (
+    msg.clientAction?.url &&
+    (msg.clientAction.url.startsWith('http') ||
+      msg.clientAction.url.startsWith('spotify:') ||
+      msg.clientAction.url.startsWith('whatsapp:') ||
+      msg.clientAction.url.startsWith('vscode:') ||
+      msg.clientAction.url.startsWith('canva:'))
+  ) {
     return { url: msg.clientAction.url, label: msg.clientAction.label };
   }
   return null;
@@ -286,6 +298,10 @@ export function ChatContainer({
   isLoading,
   streamingContent,
   onVoiceCommand,
+  isSpeaking = false,
+  isAwake = false,
+  onTapWake,
+  onTabChange,
 }: ChatContainerProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
@@ -319,8 +335,12 @@ export function ChatContainer({
       {messages.length === 0 && !streamingContent && (
         <div className="my-auto flex flex-col items-center justify-center text-center p-4 text-slate-500">
           <ArcReactorWake
+            isMaster={false}
             onCommandReceived={(cmd) => onVoiceCommand && onVoiceCommand(cmd)}
             isProcessing={isLoading}
+            isSpeaking={isSpeaking}
+            isAwakeExternal={isAwake}
+            onTapWakeExternal={onTapWake}
             activeStatusText="Dites simplement 'JARVIS...' ou touchez pour ordonner sans clavier"
           />
 
@@ -419,6 +439,62 @@ export function ChatContainer({
                       <ActionIcon className="w-3.5 h-3.5" />
                       <span>{actionMeta.buttonLabel}</span>
                       <ArrowUpRight className="w-3.5 h-3.5 opacity-80" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* CARTE DE CAPTURE D'ÉCRAN HOLOGRAPHIQUE */}
+              {msg.clientAction?.type === 'screenshot' && msg.clientAction.url && (
+                <div className="mt-3.5 pt-3 border-t border-cyan-500/30 rounded-lg p-3 bg-cyan-950/40 border border-cyan-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs">
+                      <Camera className="w-4 h-4 text-cyan-400" />
+                      <span className="glow-cyan">CAPTURE D'ÉCRAN DU BUREAU // SYNTHÈSE VISUELLE</span>
+                    </div>
+                    <a
+                      href={msg.clientAction.url}
+                      download={`jarvis_capture_${Date.now()}.png`}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-200 underline font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Télécharger HD</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                  <div className="relative rounded-lg overflow-hidden border border-cyan-500/40 bg-black/80 group max-h-96 flex items-center justify-center">
+                    <img
+                      src={msg.clientAction.url}
+                      alt="Capture d'écran Windows"
+                      className="w-full max-h-96 object-contain rounded transition-transform duration-300 group-hover:scale-[1.02]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* CARTE DE BASCULE DE MODULE SYSTÈME */}
+              {msg.clientAction?.type === 'switch_tab' && msg.clientAction.tab && (
+                <div className="mt-3.5 pt-3 border-t border-cyan-500/30 rounded-md p-3 bg-gradient-to-r from-cyan-950/60 to-slate-900/80 border border-cyan-500/40">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded bg-cyan-900/40 border border-cyan-400/30 text-cyan-300">
+                        <Sparkles className="w-4 h-4 text-cyan-400" />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-100 flex items-center gap-1.5">
+                          <span>MODULE SYSTÈME DISPONIBLE</span>
+                        </div>
+                        <div className="text-[10px] text-cyan-300/80 leading-tight">
+                          {msg.clientAction.label || `Accéder au module ${msg.clientAction.tab}`}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => onTabChange && onTabChange(msg.clientAction?.tab as any)}
+                      className="w-full sm:w-auto px-4 py-2 rounded text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white"
+                    >
+                      <span>{msg.clientAction.label || `Ouvrir ${msg.clientAction.tab}`}</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

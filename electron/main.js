@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, globalShortcut, Notification, session, desktopCapturer } = require('electron');
 const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
+
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 const fs = require('fs');
 const logFile = path.join(__dirname, '..', '.data', 'electron_debug.log');
@@ -83,8 +85,21 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false, // Permet les chargements multimédias locaux et appels API fluides
+      autoplayPolicy: 'no-user-gesture-required',
     },
     show: true, // Afficher immédiatement
+  });
+
+  // Autoriser l'accès au microphone et aux notifications sans boîte de dialogue bloquante
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'audioCapture' || permission === 'notifications') {
+      return callback(true);
+    }
+    callback(true);
+  });
+
+  mainWindow.webContents.session.setPermissionCheckHandler(() => {
+    return true;
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -240,6 +255,21 @@ function setupIpc() {
       child.unref();
       resolve({ success: true, message: `Application ${appName} lancée avec succès.` });
     });
+  });
+
+  ipcMain.handle('take-screenshot', async () => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 1920, height: 1080 },
+      });
+      if (sources && sources.length > 0) {
+        return { success: true, dataUrl: sources[0].thumbnail.toDataURL() };
+      }
+      return { success: false, error: 'Aucun affichage détecté' };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   });
 
   ipcMain.on('system-notification', (_, { title, body }) => {

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAlwaysOnTop: () => ipcRenderer.invoke('window-get-always-on-top'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   launchApp: (appName, targetPath) => ipcRenderer.invoke('launch-app', { appName, targetPath }),
+  takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
   sendSystemNotification: (title, body) => ipcRenderer.send('system-notification', { title, body }),
   onToggleWindow: (callback) => ipcRenderer.on('toggle-window', callback),
 });

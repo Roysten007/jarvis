@@ -77,6 +77,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(result);
     }
 
+    if (action === 'screenshot') {
+      const { takeScreenshotBitBlt } = await import('@/lib/screenshot');
+      const result = await takeScreenshotBitBlt();
+      return NextResponse.json(result);
+    }
+
     return NextResponse.json({ error: 'Action non reconnue' }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

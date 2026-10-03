@@ -29,6 +29,10 @@ export async function POST(req: NextRequest) {
       convId = newConv.id;
     }
 
+    // Récupérer le dernier message de l'assistant avant d'ajouter le message actuel
+    const existingMessages = await getMessages(convId);
+    const lastAssistantMsg = [...existingMessages].reverse().find((m: any) => m.role === 'assistant')?.content;
+
     // 2. Enregistrer le message utilisateur
     await saveMessage({
       conversation_id: convId,
@@ -38,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Détection et exécution réelle des ordres système sur Windows
     const { executeSystemCommand } = await import('@/lib/system-controller');
-    const systemResult = await executeSystemCommand(message);
+    const systemResult = await executeSystemCommand(message, lastAssistantMsg);
 
     let actionExecutedNote = '';
     if (systemResult.executed) {
@@ -121,17 +125,23 @@ export async function POST(req: NextRequest) {
       content: m.content,
     }));
 
+    // 5.5 Injecter le profil officiel, tarifs et offres de Roysten
+    const { getRoystenContextPrompt } = await import('@/lib/roysten-profile');
+    const roystenProfileContext = getRoystenContextPrompt();
+
     // 6. Assembler le prompt système complet avec consigne d'action réelle
     const fullSystemPrompt = `${JARVIS_CONFIG.defaultSystemPrompt}
+${roystenProfileContext}
 ${relevantMemoriesContext}
 ${languageDirective}
 ${actionExecutedNote ? `\n[ACTION RÉELLE ACCOMPLIE : "${actionExecutedNote}". Confirme sobrement et avec la distinction du majordome JARVIS de Tony Stark que l'action est réalisée. Ne recopie AUCUNE étiquette système entre crochets, ne simule pas d'interface en texte ASCII/code.]` : ''}`;
 
-    // Préparer le message utilisateur actuel (avec image si fournie)
-    const userCurrentContent: any = image
+    // Préparer le message utilisateur actuel (avec image si fournie ou capture d'écran)
+    const effectiveImage = image || systemResult.screenshotDataUrl;
+    const userCurrentContent: any = effectiveImage
       ? [
           { type: 'text', text: message },
-          { type: 'image_url', image_url: { url: image } },
+          { type: 'image_url', image_url: { url: effectiveImage } },
         ]
       : message;
 
@@ -141,8 +151,8 @@ ${actionExecutedNote ? `\n[ACTION RÉELLE ACCOMPLIE : "${actionExecutedNote}". C
       { role: 'user', content: userCurrentContent },
     ];
 
-    // Si une image est fournie, forcer le modèle de vision
-    const modelToUse = image ? 'meta/llama-3.2-11b-vision-instruct' : (model || JARVIS_CONFIG.defaultFastModel);
+    // Si une image ou capture est fournie, forcer le modèle de vision multimodal
+    const modelToUse = effectiveImage ? 'meta/llama-3.2-11b-vision-instruct' : (model || JARVIS_CONFIG.defaultFastModel);
 
     // Si streaming demandé
     if (stream) {

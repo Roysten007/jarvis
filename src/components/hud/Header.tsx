@@ -12,6 +12,10 @@ interface HeaderProps {
   isListening?: boolean;
   onVoiceCommand?: (cmd: string) => void;
   isLoading?: boolean;
+  isSpeaking?: boolean;
+  isVoiceInputActive?: boolean;
+  isAwake?: boolean;
+  onAwakeChange?: (awake: boolean) => void;
 }
 
 export function Header({
@@ -20,6 +24,10 @@ export function Header({
   isListening = false,
   onVoiceCommand,
   isLoading = false,
+  isSpeaking = false,
+  isVoiceInputActive = false,
+  isAwake = false,
+  onAwakeChange,
 }: HeaderProps) {
   const [time, setTime] = useState<string>('');
   const [isDesktop, setIsDesktop] = useState<boolean>(false);
@@ -84,8 +92,13 @@ export function Header({
         <div className="flex items-center">
           <ArcReactorWake
             compact
+            isMaster={true}
             onCommandReceived={onVoiceCommand}
             isProcessing={isLoading}
+            isSpeaking={isSpeaking}
+            isVoiceInputActive={isVoiceInputActive}
+            onAwakeChange={onAwakeChange}
+            isAwakeExternal={isAwake}
           />
         </div>
       )}

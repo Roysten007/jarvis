@@ -7,6 +7,7 @@ export interface ElectronAPI {
   getAlwaysOnTop: () => Promise<boolean>;
   openExternal: (url: string) => Promise<{ success: boolean }>;
   launchApp: (appName: string, targetPath?: string) => Promise<{ success: boolean; message: string }>;
+  takeScreenshot: () => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
   sendSystemNotification: (title: string, body: string) => void;
   onToggleWindow: (callback: () => void) => void;
 }

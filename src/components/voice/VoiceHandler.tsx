@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Radio, Settings2, Play, Sparkles } from 'lucide-react';
+import { Mic, VolumeX, Radio, Settings2, Play, Sparkles } from 'lucide-react';
 import { playMicOpen, playHudReceive } from '@/lib/audio-effects';
 
-interface VoiceHandlerProps {
+export interface VoiceHandlerProps {
   onSpeechResult: (transcript: string) => void;
   isListening: boolean;
   setIsListening: (val: boolean) => void;
   handsFree: boolean;
   setHandsFree: (val: boolean) => void;
   streamChunkToSpeak?: string; // Phrase ou morceau à prononcer immédiatement en flux
+  onSpeakingChange?: (isSpeaking: boolean) => void;
+  onStopSpeakingRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 export function VoiceHandler({
@@ -20,6 +22,8 @@ export function VoiceHandler({
   handsFree,
   setHandsFree,
   streamChunkToSpeak,
+  onSpeakingChange,
+  onStopSpeakingRef,
 }: VoiceHandlerProps) {
   const [speechSupported, setSpeechSupported] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
@@ -37,32 +41,65 @@ export function VoiceHandler({
   const speechQueueRef = useRef<string[]>([]);
   const isPlayingQueueRef = useRef<boolean>(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const sharedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioWatchdogRef = useRef<any>(null);
+  const ttsAbortControllerRef = useRef<AbortController | null>(null);
 
-  // Débloquer le lecteur audio sur la première interaction de l'utilisateur
+  // Informer le parent du statut de parole de façon asynchrone (évite warning React setState in render)
+  const updateSpeaking = useCallback(
+    (speaking: boolean) => {
+      setIsSpeaking(speaking);
+      if (onSpeakingChange) {
+        setTimeout(() => {
+          onSpeakingChange(speaking);
+        }, 0);
+      }
+    },
+    [onSpeakingChange]
+  );
+
+  // Arrêter immédiatement toute synthèse vocale et annuler les flux
+  const stopSpeaking = useCallback(() => {
+    if (ttsAbortControllerRef.current) {
+      try {
+        ttsAbortControllerRef.current.abort();
+      } catch (e) {}
+      ttsAbortControllerRef.current = null;
+    }
+    if (audioWatchdogRef.current) {
+      clearTimeout(audioWatchdogRef.current);
+      audioWatchdogRef.current = null;
+    }
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.src = '';
+      } catch (e) {}
+      currentAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+    speechQueueRef.current = [];
+    isPlayingQueueRef.current = false;
+    updateSpeaking(false);
+  }, [updateSpeaking]);
+
+  // Exposer stopSpeaking via la ref pour page.tsx
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const audio = new Audio();
-    audio.preload = 'auto';
-    sharedAudioRef.current = audio;
-
-    const unlock = () => {
-      audio.play().then(() => audio.pause()).catch(() => {});
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('keydown', unlock);
-      window.removeEventListener('touchstart', unlock);
-    };
-
-    window.addEventListener('click', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
-    window.addEventListener('touchstart', unlock, { once: true });
-
+    if (onStopSpeakingRef) {
+      onStopSpeakingRef.current = stopSpeaking;
+    }
     return () => {
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('keydown', unlock);
-      window.removeEventListener('touchstart', unlock);
+      if (onStopSpeakingRef) onStopSpeakingRef.current = null;
     };
-  }, []);
+  }, [onStopSpeakingRef, stopSpeaking]);
 
   // Charger la langue et options sauvegardées
   useEffect(() => {
@@ -85,7 +122,6 @@ export function VoiceHandler({
       if (available.length > 0) {
         setVoices(available);
 
-        // Récupérer la voix sauvegardée ou chercher la meilleure voix selon la langue
         const savedVoice = localStorage.getItem('jarvis_voice_name');
         const langVoices = available.filter((v) => v.lang.toLowerCase().startsWith(voiceLang));
 
@@ -108,7 +144,6 @@ export function VoiceHandler({
     loadVoices();
     window.speechSynthesis.onvoiceschanged = loadVoices;
 
-    // Charger pitch et rate sauvegardés
     const savedPitch = localStorage.getItem('jarvis_voice_pitch');
     if (savedPitch) setPitch(parseFloat(savedPitch));
 
@@ -116,38 +151,38 @@ export function VoiceHandler({
     if (savedRate) setRate(parseFloat(savedRate));
   }, [voiceLang]);
 
-  // Initialisation de la reconnaissance vocale Web Speech
+  // Initialisation de la reconnaissance vocale Web Speech pour le bouton Micro
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (typeof window === 'undefined') return;
 
-      if (SpeechRecognition) {
-        setSpeechSupported(true);
-        const recognition = new SpeechRecognition();
-        recognition.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
-        recognition.continuous = false;
-        recognition.interimResults = false;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-        recognition.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          if (transcript) {
-            playHudReceive();
-            onSpeechResult(transcript);
-          }
-        };
+    if (SpeechRecognition) {
+      setSpeechSupported(true);
+      const recognition = new SpeechRecognition();
+      recognition.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
+      recognition.continuous = false;
+      recognition.interimResults = false;
 
-        recognition.onend = () => {
-          setIsListening(false);
-        };
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+          playHudReceive();
+          onSpeechResult(transcript);
+        }
+      };
 
-        recognition.onerror = (err: any) => {
-          console.warn('[VOICE] Erreur micro:', err.error);
-          setIsListening(false);
-        };
+      recognition.onend = () => {
+        setIsListening(false);
+      };
 
-        recognitionRef.current = recognition;
-      }
+      recognition.onerror = (err: any) => {
+        console.warn('[VOICE] Fin micro:', err.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
     }
   }, [onSpeechResult, setIsListening, voiceLang]);
 
@@ -157,7 +192,7 @@ export function VoiceHandler({
     audio.play().catch((err) => console.warn('Erreur lecture /voix.mp3:', err));
   };
 
-  // File d'attente vocale ultra-réaliste (Neural Studio TTS via /api/tts + fallback Web Speech)
+  // Traitement sécurisé de la file vocale
   const processSpeechQueue = useCallback(() => {
     if (typeof window === 'undefined') return;
     if (isPlayingQueueRef.current || speechQueueRef.current.length === 0) return;
@@ -165,14 +200,18 @@ export function VoiceHandler({
     const rawSentence = speechQueueRef.current.shift();
     if (!rawSentence) return;
 
-    // Nettoyer les liens markdown [texte](url), les URLs et symboles pour la synthèse vocale
+    // Nettoyer les balises Markdown, code, liens, emojis
     const sentence = rawSentence
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]*`/g, '')
       .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
       .replace(/https?:\/\/\S+/g, '')
-      .replace(/[👉🎵💬💻🎨🎬▶️🔍]/g, '')
+      .replace(/[*#_~[\]()]/g, '')
+      .replace(/[👉🎵💬💻🎨🎬▶️🔍☀️⚡🤖🔥]/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
-    if (!sentence) {
+    if (!sentence || sentence.length < 2) {
       isPlayingQueueRef.current = false;
       if (speechQueueRef.current.length > 0) {
         processSpeechQueue();
@@ -181,101 +220,119 @@ export function VoiceHandler({
     }
 
     isPlayingQueueRef.current = true;
-    setIsSpeaking(true);
+    updateSpeaking(true);
 
     const onSentenceFinish = () => {
+      if (audioWatchdogRef.current) {
+        clearTimeout(audioWatchdogRef.current);
+        audioWatchdogRef.current = null;
+      }
       isPlayingQueueRef.current = false;
+
       if (speechQueueRef.current.length > 0) {
         processSpeechQueue();
       } else {
-        setIsSpeaking(false);
-        if (handsFree && recognitionRef.current) {
+        updateSpeaking(false);
+        // Mode mains libres : relancer l'écoute si activé (avec délai suffisant pour éviter tout écho)
+        if (handsFree && recognitionRef.current && !isPlayingQueueRef.current) {
           setTimeout(() => {
             try {
-              if (playVoiceOnWake) playCustomVoiceSample();
-              else playMicOpen();
-              recognitionRef.current.start();
-              setIsListening(true);
+              if (handsFree && !isPlayingQueueRef.current) {
+                if (playVoiceOnWake) playCustomVoiceSample();
+                else playMicOpen();
+                recognitionRef.current.start();
+                setIsListening(true);
+              }
             } catch (e) {}
-          }, 400);
+          }, 1000);
         }
       }
     };
 
-    // Fallback synthétiseur navigateur local si hors-ligne ou erreur
-    const runFallbackSynthesis = () => {
-      if (!window.speechSynthesis) {
-        onSentenceFinish();
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(sentence);
-      utterance.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
-      utterance.rate = rate;
-      utterance.pitch = pitch;
+    // Synthèse via l'API TTS (MsEdgeTTS HD Neural)
+    const controller = new AbortController();
+    ttsAbortControllerRef.current = controller;
 
-      if (selectedVoiceName) {
-        const voiceObj = voices.find(
-          (v) => v.name === selectedVoiceName && v.lang.toLowerCase().startsWith(voiceLang)
-        );
-        if (voiceObj) utterance.voice = voiceObj;
-      }
-
-      utterance.onend = onSentenceFinish;
-      utterance.onerror = onSentenceFinish;
-      window.speechSynthesis.speak(utterance);
-    };
-
-    // 1. Tenter la voix neurale studio haute définition (Remy en FR, Ryan en EN)
     fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: sentence, lang: voiceLang }),
+      signal: controller.signal,
     })
       .then((res) => {
         if (!res.ok) throw new Error('API TTS indisponible');
         return res.blob();
       })
       .then((blob) => {
+        ttsAbortControllerRef.current = null;
+        // Si le serveur a renvoyé un blob vide ou JSON
+        if (blob.size < 100) {
+          onSentenceFinish();
+          return;
+        }
+
         const audioUrl = URL.createObjectURL(blob);
-        const audio = sharedAudioRef.current || new Audio();
-        audio.src = audioUrl;
+        const audio = new Audio(audioUrl);
         currentAudioRef.current = audio;
 
-        audio.onended = () => {
+        let hasEnded = false;
+        const cleanupAndFinish = () => {
+          if (hasEnded) return;
+          hasEnded = true;
+          if (audioWatchdogRef.current) {
+            clearTimeout(audioWatchdogRef.current);
+            audioWatchdogRef.current = null;
+          }
           URL.revokeObjectURL(audioUrl);
-          currentAudioRef.current = null;
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
           onSentenceFinish();
         };
 
+        audio.onended = cleanupAndFinish;
         audio.onerror = (e) => {
           console.warn('[TTS] Audio playback error:', e);
-          URL.revokeObjectURL(audioUrl);
-          currentAudioRef.current = null;
-          runFallbackSynthesis();
+          cleanupAndFinish();
         };
 
+        // Chien de garde (watchdog) : max 8s par phrase pour ne JAMAIS geler la file vocale
+        audioWatchdogRef.current = setTimeout(() => {
+          console.warn('[TTS] Watchdog audio timeout:', sentence.substring(0, 30));
+          try {
+            audio.pause();
+          } catch (e) {}
+          cleanupAndFinish();
+        }, Math.min(8000, Math.max(4000, sentence.length * 100)));
+
         audio.play().catch((playErr) => {
-          console.warn('[TTS] Play blocked, falling back to local speech:', playErr);
-          runFallbackSynthesis();
+          console.warn('[TTS] Play blocked:', playErr);
+          cleanupAndFinish();
         });
       })
       .catch((err) => {
-        console.warn('[TTS] API error:', err);
-        runFallbackSynthesis();
+        ttsAbortControllerRef.current = null;
+        if (err.name !== 'AbortError') {
+          console.warn('[TTS] API error:', err);
+        }
+        onSentenceFinish();
       });
-  }, [rate, pitch, selectedVoiceName, voices, handsFree, setIsListening, voiceLang, playVoiceOnWake]);
+  }, [voiceLang, handsFree, setIsListening, updateSpeaking, playVoiceOnWake]);
 
-  // Ajouter un fragment textuel à la file de parole
+  // Ajouter un texte ou phrase à la file
   const queueSpeech = useCallback(
     (text: string) => {
-      // Nettoyer balises markdown, code et URLs
       const clean = text
+        .replace(/```[\s\S]*?```/g, '')
         .replace(/[*#`_~[\]()]/g, '')
         .replace(/https?:\/\/\S+/g, '')
-        .replace(/\n+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
-      if (!clean) return;
+      if (!clean || clean.length < 2) return;
+
+      // Limiter la file vocale à 2 phrases max pour éviter tout emballement
+      if (speechQueueRef.current.length >= 2) return;
 
       speechQueueRef.current.push(clean);
       processSpeechQueue();
@@ -285,12 +342,12 @@ export function VoiceHandler({
 
   // Dès qu'un fragment de phrase arrive
   useEffect(() => {
-    if (streamChunkToSpeak) {
-      queueSpeech(streamChunkToSpeak);
+    if (streamChunkToSpeak && streamChunkToSpeak.trim()) {
+      queueSpeech(streamChunkToSpeak.trim());
     }
   }, [streamChunkToSpeak, queueSpeech]);
 
-  // Basculer l'écoute
+  // Basculer l'écoute manuelle du microphone
   const toggleListening = () => {
     if (isListening) {
       if (recognitionRef.current) {
@@ -300,50 +357,12 @@ export function VoiceHandler({
       }
       setIsListening(false);
     } else {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        speechQueueRef.current = [];
-        isPlayingQueueRef.current = false;
-        setIsSpeaking(false);
-      }
+      stopSpeaking();
 
       if (!speechSupported) {
-        // Tenter de réinitialiser à la volée ou demander la permission micro
-        const SpeechRecognition =
-          (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-        if (SpeechRecognition) {
-          const rec = new SpeechRecognition();
-          rec.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
-          rec.continuous = false;
-          rec.interimResults = false;
-          rec.onresult = (ev: any) => {
-            const transcript = ev.results[0][0].transcript;
-            if (transcript) {
-              playHudReceive();
-              onSpeechResult(transcript);
-            }
-          };
-          rec.onend = () => setIsListening(false);
-          rec.onerror = () => setIsListening(false);
-          recognitionRef.current = rec;
-          setSpeechSupported(true);
-          try {
-            if (playVoiceOnWake) {
-              playCustomVoiceSample();
-            } else {
-              playMicOpen();
-            }
-            rec.start();
-            setIsListening(true);
-            return;
-          } catch (e) {}
-        }
-
-        // Si le navigateur ne supporte pas l'API ou permission refusée
         alert(
           '🎙️ Reconnaissance Vocale JARVIS :\n\n' +
-            'Pour parler au microphone, utilisez Google Chrome ou Microsoft Edge et autorisez l\'accès au micro dans la barre d\'adresse (icône cadenas/caméra).'
+            'Pour parler au microphone, autorisez l\'accès au micro dans votre système ou navigateur.'
         );
         return;
       }
@@ -363,21 +382,6 @@ export function VoiceHandler({
     }
   };
 
-  const stopSpeaking = () => {
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
-      } catch (e) {}
-    }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    speechQueueRef.current = [];
-    isPlayingQueueRef.current = false;
-    setIsSpeaking(false);
-  };
-
   const handleTestVoice = () => {
     stopSpeaking();
     queueSpeech('À vos ordres, Monsieur Roysten. Le moteur vocal neural haute fidélité de JARVIS est opérationnel.');
@@ -392,7 +396,7 @@ export function VoiceHandler({
 
   return (
     <div className="flex items-center gap-1.5 font-mono text-xs relative">
-      {/* Bouton Micro Principal Toujours Visible */}
+      {/* Bouton Micro Principal */}
       <button
         type="button"
         onClick={toggleListening}
@@ -403,20 +407,24 @@ export function VoiceHandler({
             : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 shadow-hud-cyan'
         }`}
       >
-        {isListening ? (
-          <>
-            <Mic className="w-4 h-4 text-amber-400 animate-bounce" />
-            <span className="text-[11px] text-amber-300">Écoute...</span>
-          </>
-        ) : (
-          <>
-            <Mic className="w-4 h-4 text-cyan-400" />
-            <span className="text-[11px] hidden sm:inline">Micro</span>
-          </>
-        )}
+        <Mic className={`w-4 h-4 ${isListening ? 'text-amber-400 animate-bounce' : 'text-cyan-400'}`} />
+        <span className="text-[11px] hidden sm:inline">{isListening ? 'Écoute...' : 'Micro'}</span>
       </button>
 
-      {/* Bascule Rapide Langue Vocale (Français / Anglais pour apprentissage) */}
+      {/* Bouton STOP Immédiat de la Voix (visible quand JARVIS parle) */}
+      {isSpeaking && (
+        <button
+          type="button"
+          onClick={stopSpeaking}
+          title="Faire taire JARVIS immédiatement"
+          className="px-2.5 py-2 rounded-lg border bg-rose-500/20 border-rose-500 text-rose-300 hover:bg-rose-500/30 animate-pulse flex items-center gap-1.5 shadow-[0_0_15px_rgba(244,63,94,0.4)]"
+        >
+          <VolumeX className="w-4 h-4 text-rose-400" />
+          <span className="text-[11px] font-bold">Faire taire</span>
+        </button>
+      )}
+
+      {/* Bascule Rapide Langue Vocale */}
       <button
         type="button"
         onClick={() => {
@@ -424,7 +432,7 @@ export function VoiceHandler({
           setVoiceLang(next);
           localStorage.setItem('jarvis_voice_lang', next);
         }}
-        title="Basculer la langue vocale : Français ou Anglais (pour pratiquer)"
+        title="Basculer la langue vocale : Français ou Anglais"
         className={`px-2 py-2 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1 ${
           voiceLang === 'en'
             ? 'bg-indigo-500/25 border-indigo-400 text-indigo-300 shadow-hud-indigo animate-pulse'
@@ -453,7 +461,7 @@ export function VoiceHandler({
       <button
         type="button"
         onClick={() => setShowSettings(!showSettings)}
-        title="Personnaliser la voix de Jarvis (timbre, vitesse, choix de voix)"
+        title="Personnaliser la voix de Jarvis"
         className={`p-2 rounded-lg border transition-all ${
           showSettings
             ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
@@ -462,19 +470,6 @@ export function VoiceHandler({
       >
         <Settings2 className="w-4 h-4" />
       </button>
-
-      {/* Arrêt vocal immédiat */}
-      {isSpeaking && (
-        <button
-          type="button"
-          onClick={stopSpeaking}
-          title="Faire taire Jarvis immédiatement"
-          className="p-2 rounded-lg border bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse flex items-center gap-1"
-        >
-          <VolumeX className="w-4 h-4" />
-          <span className="text-[10px] hidden sm:inline">Stop</span>
-        </button>
-      )}
 
       {/* Modal Studio Vocal */}
       {showSettings && (
@@ -492,17 +487,17 @@ export function VoiceHandler({
             </button>
           </div>
 
-          {/* Fichier voix.mp3 détecté */}
+          {/* Fichier voix.mp3 */}
           <div className="bg-[#091024] border border-cyan-500/30 rounded p-2.5 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-cyan-400" />
-                <span>Empreinte : voix.mp3</span>
+                <span>Voix HD Neural (MsEdge Remy/Ryan)</span>
               </span>
-              <span className="text-[10px] text-emerald-400 font-bold">✓ Chargé</span>
+              <span className="text-[10px] text-emerald-400 font-bold">✓ Actif</span>
             </div>
             <p className="text-[10px] text-slate-400 font-sans">
-              Votre fichier <code>voix.mp3</code> est prêt.
+              Synthèse vocale ultra-réaliste haute fidélité avec voix.mp3 supporté.
             </p>
             <div className="flex gap-1.5 pt-0.5">
               <button
@@ -511,7 +506,7 @@ export function VoiceHandler({
                 className="flex-1 py-1 bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 rounded hover:bg-cyan-500/30 text-[11px] font-bold flex items-center justify-center gap-1.5"
               >
                 <Play className="w-3 h-3 text-cyan-400" />
-                <span>Écouter</span>
+                <span>Écouter voix.mp3</span>
               </button>
               <button
                 type="button"
@@ -549,7 +544,7 @@ export function VoiceHandler({
                     : 'bg-slate-900 border-slate-700 text-slate-400'
                 }`}
               >
-                🇫🇷 Français (Défaut)
+                🇫🇷 Français (Remy HD)
               </button>
               <button
                 type="button"
@@ -563,71 +558,8 @@ export function VoiceHandler({
                     : 'bg-slate-900 border-slate-700 text-slate-400'
                 }`}
               >
-                🇬🇧 English (Learning)
+                🇬🇧 English (Ryan HD)
               </button>
-            </div>
-          </div>
-
-          {/* Choix de la voix */}
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">
-              Voix de synthèse ({voiceLang === 'fr' ? 'Français' : 'English'}) :
-            </label>
-            <select
-              value={selectedVoiceName}
-              onChange={(e) => setSelectedVoiceName(e.target.value)}
-              className="w-full bg-[#0c1427] border border-cyan-500/30 rounded p-1.5 text-xs text-slate-200 outline-none focus:border-cyan-400"
-            >
-              <option value="">Voix standard du navigateur</option>
-              {voices
-                .filter((v) => v.lang.toLowerCase().startsWith(voiceLang))
-                .map((v) => (
-                  <option key={v.name} value={v.name}>
-                    {v.name} ({v.lang})
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          {/* Hauteur / Timbre (Pitch) */}
-          <div>
-            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-              <span>Timbre / Grave-Aigu :</span>
-              <span className="text-cyan-300 font-bold">{pitch.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min="0.7"
-              max="1.3"
-              step="0.02"
-              value={pitch}
-              onChange={(e) => setPitch(parseFloat(e.target.value))}
-              className="w-full accent-cyan-400 cursor-pointer"
-            />
-            <div className="flex justify-between text-[9px] text-slate-500">
-              <span>Grave / Posé (Majordome)</span>
-              <span>Aigu</span>
-            </div>
-          </div>
-
-          {/* Vitesse / Débit (Rate) */}
-          <div>
-            <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-              <span>Débit / Vitesse :</span>
-              <span className="text-cyan-300 font-bold">{rate.toFixed(2)}x</span>
-            </div>
-            <input
-              type="range"
-              min="0.8"
-              max="1.5"
-              step="0.05"
-              value={rate}
-              onChange={(e) => setRate(parseFloat(e.target.value))}
-              className="w-full accent-cyan-400 cursor-pointer"
-            />
-            <div className="flex justify-between text-[9px] text-slate-500">
-              <span>Calme (0.8x)</span>
-              <span>Rapide (1.5x)</span>
             </div>
           </div>
 
@@ -639,7 +571,7 @@ export function VoiceHandler({
               className="px-2.5 py-1 bg-slate-900 border border-slate-700 text-slate-300 rounded hover:border-cyan-400 hover:text-cyan-300 text-[11px] flex items-center gap-1"
             >
               <Play className="w-3 h-3 text-cyan-400" />
-              <span>Tester synthèse</span>
+              <span>Tester voix</span>
             </button>
             <button
               type="button"
