@@ -97,6 +97,7 @@ export default function JarvisDashboard() {
       const decoder = new TextDecoder();
       let accumulated = '';
       let activeConvId = conversationId;
+      let receivedClientAction: { type: 'open_url'; url: string; label?: string } | undefined;
 
       if (reader) {
         while (true) {
@@ -122,10 +123,23 @@ export default function JarvisDashboard() {
                   feedSpeechBuffer(parsed.content);
                 }
                 if (parsed.clientAction && parsed.clientAction.url) {
+                  receivedClientAction = parsed.clientAction;
                   try {
-                    window.open(parsed.clientAction.url, '_blank');
+                    const actionUrl = parsed.clientAction.url;
+                    // Si c'est un protocole d'application native Windows (spotify:, vscode:, whatsapp:, canva:)
+                    if (/^(spotify|vscode|whatsapp|canva|capcut):/i.test(actionUrl)) {
+                      const link = document.createElement('a');
+                      link.href = actionUrl;
+                      link.style.display = 'none';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    } else {
+                      // Si c'est un site Web (Facebook, Twitter, LinkedIn, Google, etc.)
+                      window.open(actionUrl, '_blank', 'noopener,noreferrer');
+                    }
                   } catch (e) {
-                    console.error('[CLIENT ACTION]', e);
+                    console.warn('[CLIENT ACTION WARNING]', e);
                   }
                 }
               } catch (e) {}
@@ -147,6 +161,7 @@ export default function JarvisDashboard() {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: accumulated,
+          clientAction: receivedClientAction,
           createdAt: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, assistantMsg]);
