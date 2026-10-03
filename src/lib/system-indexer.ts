@@ -223,18 +223,11 @@ export function launchSystemApp(app: InstalledApp): { success: boolean; message:
   try {
     const cleanName = app.name.toLowerCase().trim();
 
-    // 1. Commandes directes ultra-rapides et infaillibles pour les suites Office majeures
-    if (cleanName === 'excel') {
-      spawn('cmd.exe', ['/c', 'start', '""', 'excel'], { detached: true, stdio: 'ignore' }).unref();
-      return { success: true, message: `Microsoft Excel lancé sur votre écran.` };
-    }
-    if (cleanName === 'word' || cleanName.includes('word')) {
-      spawn('cmd.exe', ['/c', 'start', '""', 'winword'], { detached: true, stdio: 'ignore' }).unref();
-      return { success: true, message: `Microsoft Word lancé sur votre écran.` };
-    }
-    if (cleanName === 'powerpoint') {
-      spawn('cmd.exe', ['/c', 'start', '""', 'powerpnt'], { detached: true, stdio: 'ignore' }).unref();
-      return { success: true, message: `Microsoft PowerPoint lancé sur votre écran.` };
+    // 1. Commandes directes infaillibles pour les applications majeures
+    if (cleanName === 'excel' || cleanName === 'word' || cleanName.includes('word') || cleanName === 'powerpoint' || cleanName.includes('lovable')) {
+      const { launchApplicationDirect } = require('./desktop-automator');
+      launchApplicationDirect(cleanName);
+      return { success: true, message: `${app.name} lancé et activé sur votre écran, Monsieur Roysten.` };
     }
 
     // 2. Si un raccourci .lnk physique ou exécutable existe sur le disque
@@ -390,122 +383,25 @@ export async function automateSendMessage(
   } catch (e) {}
 
   if (platform === 'whatsapp') {
-    const { resolveContactPhone } = await import('./db');
-    const resolved = cleanContact ? await resolveContactPhone(cleanContact) : null;
-    const phone = resolved ? resolved.phone : cleanContact.replace(/[^0-9]/g, '');
-    const contactName = resolved ? resolved.name : cleanContact;
-
-    if (phone && phone.length >= 8) {
-      // Lancer WhatsApp Desktop directement sur la conversation
-      spawn('explorer.exe', [`whatsapp://send?phone=${phone}&text=${encodeURIComponent(text)}`], {
-        detached: true,
-        stdio: 'ignore',
-      }).unref();
-
-      // Script PowerShell d'envoi automatique résilient (boucle d'activation + envoi et secours presse-papier)
-      const psAutoSend = `
-Start-Sleep -Milliseconds 2200
-$wshell = New-Object -ComObject WScript.Shell
-for ($i = 0; $i -lt 5; $i++) {
-    if ($wshell.AppActivate('WhatsApp')) {
-        Start-Sleep -Milliseconds 600
-        $wshell.SendKeys('{ENTER}')
-        Start-Sleep -Milliseconds 600
-        $wshell.SendKeys('^v')
-        Start-Sleep -Milliseconds 400
-        $wshell.SendKeys('{ENTER}')
-        break
-    }
-    Start-Sleep -Milliseconds 800
-}
-`;
-      spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psAutoSend.replace(/\r?\n/g, '; ')], {
-        detached: true,
-        stdio: 'ignore',
-      }).unref();
-
-      return {
-        success: true,
-        message: `Message envoyé automatiquement à **${contactName || phone}** sur WhatsApp Desktop (« ${text} »).`,
-        actionNote: `Message WhatsApp expédié automatiquement à ${contactName || phone}.`,
-        clientAction: {
-          type: 'open_url',
-          url: `https://web.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(text)}`,
-          label: `Voir la conversation avec ${contactName || phone}`,
-        },
-      };
-    } else {
-      // Si pas de numéro : Ouvrir WhatsApp Desktop et automatiser la recherche du contact puis envoi
-      const app = findSystemApp('whatsapp');
-      if (app) launchSystemApp(app);
-      else spawn('explorer.exe', ['whatsapp:'], { detached: true, stdio: 'ignore' }).unref();
-
-      const psSearchAndSend = `
-Start-Sleep -Milliseconds 2000
-$wshell = New-Object -ComObject WScript.Shell
-for ($i = 0; $i -lt 5; $i++) {
-    if ($wshell.AppActivate('WhatsApp')) {
-        Start-Sleep -Milliseconds 500
-        $wshell.SendKeys('^f')
-        Start-Sleep -Milliseconds 600
-        $wshell.SendKeys('${cleanContact.replace(/'/g, "''")}')
-        Start-Sleep -Milliseconds 1200
-        $wshell.SendKeys('{DOWN}')
-        Start-Sleep -Milliseconds 400
-        $wshell.SendKeys('{ENTER}')
-        Start-Sleep -Milliseconds 800
-        $wshell.SendKeys('^v')
-        Start-Sleep -Milliseconds 400
-        $wshell.SendKeys('{ENTER}')
-        Start-Sleep -Milliseconds 500
-        $wshell.SendKeys('{ENTER}')
-        break
-    }
-    Start-Sleep -Milliseconds 800
-}
-`;
-      spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psSearchAndSend.replace(/\r?\n/g, '; ')], {
-        detached: true,
-        stdio: 'ignore',
-      }).unref();
-
-      return {
-        success: true,
-        message: `Séquence d'envoi automatique déclenchée dans WhatsApp Desktop pour **${cleanContact}** (« ${text} »). Le texte est copié et transmis sans action manuelle.`,
-        actionNote: `WhatsApp Desktop automatisé pour ${cleanContact}.`,
-        clientAction: {
-          type: 'open_url',
-          url: `https://web.whatsapp.com/send?text=${encodeURIComponent(text)}`,
-          label: `Ouvrir WhatsApp Web (${cleanContact})`,
-        },
-      };
-    }
+    const { sendWhatsAppMessageAutomated } = await import('./desktop-automator');
+    return sendWhatsAppMessageAutomated(text, cleanContact);
   }
 
   if (platform === 'facebook') {
-    // 1. Lancer l'application Facebook Desktop native de Roysten
-    const fbApp = findSystemApp('facebook');
-    if (fbApp) {
-      launchSystemApp(fbApp);
-    } else {
-      spawn('explorer.exe', ['shell:AppsFolder\\FACEBOOK.FACEBOOK_8xx8rvfyw5nnt!App'], { detached: true, stdio: 'ignore' }).unref();
-    }
+    // 1. Lancer l'application Facebook Desktop
+    const { launchApplicationDirect, activateDesktopWindow } = await import('./desktop-automator');
+    await launchApplicationDirect('facebook');
 
-    // 2. Automate focus, colle le message et envoie avec Entrée
-    const psFbSend = `
-Start-Sleep -Milliseconds 2000
-$wshell = New-Object -ComObject WScript.Shell
-if ($wshell.AppActivate('Facebook')) {
-    Start-Sleep -Milliseconds 600
-    $wshell.SendKeys('^v')
-    Start-Sleep -Milliseconds 400
-    $wshell.SendKeys('{ENTER}')
-}
-`;
-    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psFbSend.replace(/\r?\n/g, '; ')], {
-      detached: true,
-      stdio: 'ignore',
-    }).unref();
+    // 2. Automate focus, colle le message et envoie avec Entrée sur WinSta0\default
+    await activateDesktopWindow({
+      titleFilter: 'Facebook',
+      waitBeforeMs: 1500,
+      steps: [
+        { waitMs: 400, clip: text, keys: '^v' },
+        { waitMs: 400, keys: '{ENTER}' },
+      ],
+      timeoutMs: 8000,
+    });
 
     return {
       success: true,
@@ -520,31 +416,22 @@ if ($wshell.AppActivate('Facebook')) {
   }
 
   if (platform === 'instagram') {
-    // 1. Lancer l'application Instagram Desktop native de Roysten
-    const igApp = findSystemApp('instagram');
-    if (igApp) {
-      launchSystemApp(igApp);
-    } else {
-      spawn('explorer.exe', ['shell:AppsFolder\\Facebook.InstagramBeta_8xx8rvfyw5nnt!App'], { detached: true, stdio: 'ignore' }).unref();
-    }
+    // 1. Lancer l'application Instagram Desktop
+    const { launchApplicationDirect, activateDesktopWindow } = await import('./desktop-automator');
+    await launchApplicationDirect('instagram');
 
-    // 2. Automate focus, colle le message et envoie avec Entrée
-    const psIgSend = `
-Start-Sleep -Milliseconds 2000
-$wshell = New-Object -ComObject WScript.Shell
-if ($wshell.AppActivate('Instagram')) {
-    Start-Sleep -Milliseconds 600
-    $wshell.SendKeys('^v')
-    Start-Sleep -Milliseconds 400
-    $wshell.SendKeys('{ENTER}')
-}
-`;
-    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psIgSend.replace(/\r?\n/g, '; ')], {
-      detached: true,
-      stdio: 'ignore',
-    }).unref();
-
+    // 2. Automate focus, colle le message et envoie avec Entrée sur WinSta0\default
     const cleanHandle = cleanContact.replace(/^@/, '');
+    await activateDesktopWindow({
+      titleFilter: 'Instagram',
+      waitBeforeMs: 1500,
+      steps: [
+        { waitMs: 400, clip: text, keys: '^v' },
+        { waitMs: 400, keys: '{ENTER}' },
+      ],
+      timeoutMs: 8000,
+    });
+
     return {
       success: true,
       message: `Application Instagram Desktop activée. Message pour **@${cleanHandle}** (« ${text} ») préparé et copié dans le presse-papier avec injection automatique.`,

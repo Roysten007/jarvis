@@ -557,43 +557,15 @@ export async function captureDesktopScreen(): Promise<ScreenshotResult> {
   return takeScreenCapture();
 }
 
-// 9. Action WhatsApp
+// 9. Action WhatsApp 100% Automatique et Résiliente
 export async function sendWhatsAppMessage(
   messageText: string,
   contactOrPhone?: string
-): Promise<{ success: boolean; phone?: string; contactName?: string; message: string }> {
-  const text = messageText.trim();
-  const encoded = encodeURIComponent(text);
-  copyToClipboard(text);
-
-  const { resolveContactPhone } = await import('./db');
-  const resolved = contactOrPhone ? await resolveContactPhone(contactOrPhone) : null;
-  const phone = resolved ? resolved.phone : (contactOrPhone?.replace(/[^0-9]/g, '') || '');
-  const contactName = resolved ? resolved.name : (contactOrPhone || '');
-
-  if (phone && phone.length >= 8) {
-    const p = spawn('explorer.exe', [`whatsapp://send?phone=${phone}&text=${encoded}`], {
-      detached: true,
-      stdio: 'ignore',
-    });
-    p.unref();
-
-    return {
-      success: true,
-      phone,
-      contactName: contactName || phone,
-      message: `Message WhatsApp préparé et transmis à ${contactName || phone}.`,
-    };
-  }
-
-  const p = spawn('explorer.exe', ['whatsapp:'], { detached: true, stdio: 'ignore' });
-  p.unref();
-  return {
-    success: false,
-    contactName,
-    message: `WhatsApp Desktop ouvert sur votre écran (aucun numéro valide spécifié pour ${contactName}).`,
-  };
+): Promise<{ success: boolean; phone?: string; contactName?: string; message: string; clientAction?: any }> {
+  const { sendWhatsAppMessageAutomated } = await import('./desktop-automator');
+  return sendWhatsAppMessageAutomated(messageText, contactOrPhone);
 }
+
 
 // 10. Statistiques système
 export function getSystemStats() {
@@ -1499,25 +1471,17 @@ Stack : React, Tailwind CSS, composants modulaires, responsive mobile-first, ani
       stdio: 'ignore',
     }).unref();
 
-    // 4. Injection automatique du prompt (Ctrl+V + Entrée) dès l'apparition de la fenêtre
-    const psLovableAuto = `
-Start-Sleep -Milliseconds 2200
-$wshell = New-Object -ComObject WScript.Shell
-for ($i = 0; $i -lt 5; $i++) {
-    if ($wshell.AppActivate('Lovable')) {
-        Start-Sleep -Milliseconds 800
-        $wshell.SendKeys('^v')
-        Start-Sleep -Milliseconds 500
-        $wshell.SendKeys('{ENTER}')
-        break
-    }
-    Start-Sleep -Milliseconds 800
-}
-`;
-    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psLovableAuto.replace(/\r?\n/g, '; ')], {
-      detached: true,
-      stdio: 'ignore',
-    }).unref();
+    // 4. Injection automatique du prompt (Ctrl+V + Entrée) sur WinSta0\default
+    const { activateDesktopWindow } = await import('./desktop-automator');
+    await activateDesktopWindow({
+      titleFilter: 'Lovable',
+      waitBeforeMs: 1800,
+      steps: [
+        { waitMs: 400, clip: fullPrompt, keys: '^v' },
+        { waitMs: 400, keys: '{ENTER}' },
+      ],
+      timeoutMs: 8000,
+    });
 
     return {
       executed: true,
@@ -1905,6 +1869,46 @@ for ($i = 0; $i -lt 5; $i++) {
       };
     }
 
+    // 2.5 Détection multi-applications : "lance excel et world", "allume lovable et chrome", etc.
+    const cleanNoAussi = cleanAppQuery.replace(/\s+aussi$/i, '').trim();
+    if (cleanNoAussi.includes(' et ') || cleanNoAussi.includes(' puis ') || cleanNoAussi.includes(',')) {
+      const parts = cleanNoAussi.split(/\s+et\s+|\s+puis\s+|\s*,\s*/i).map((p) => p.trim()).filter(Boolean);
+      const launchedApps: string[] = [];
+      for (const part of parts) {
+        const { launchApplicationDirect } = await import('./desktop-automator');
+        const direct = await launchApplicationDirect(part);
+        if (direct.success) {
+          launchedApps.push(direct.name);
+        } else {
+          const app = findSystemApp(part);
+          if (app) {
+            launchSystemApp(app);
+            launchedApps.push(app.name);
+          }
+        }
+      }
+      if (launchedApps.length > 0) {
+        return {
+          executed: true,
+          actionNote: `Applications lancées sur Windows : ${launchedApps.join(', ')}.`,
+          directReply: `À vos ordres, Monsieur Roysten. J'ai lancé sur votre écran : **${launchedApps.join('** et **')}**.`,
+          isPureCommand: true,
+        };
+      }
+    }
+
+    // 2.6 Vérification directe prioritaire avec activation premier plan (Excel, Word, Lovable, etc.)
+    const { launchApplicationDirect } = await import('./desktop-automator');
+    const directRes = await launchApplicationDirect(cleanNoAussi);
+    if (directRes.success) {
+      return {
+        executed: true,
+        actionNote: `${directRes.name} lancé sur Windows au premier plan.`,
+        directReply: `À vos ordres, Monsieur Roysten. **${directRes.name}** est lancé et activé sur votre écran.`,
+        isPureCommand: true,
+      };
+    }
+
     // 3. Recherche dans l'index complet de toutes les applications du PC (146+ applications)
     const systemApp = findSystemApp(cleanAppQuery || lower);
     if (systemApp) {
@@ -2108,22 +2112,13 @@ for ($i = 0; $i -lt 5; $i++) {
 
     const result = await sendWhatsAppMessage(msgToSend, targetContact);
 
-    if (result.success && result.phone) {
-      const recipient = result.contactName || result.phone;
-      return {
-        executed: true,
-        actionNote: `Message WhatsApp envoyé à ${recipient} (+${result.phone}).`,
-        directReply: `C'est transmis, Monsieur Roysten. Le message « ${msgToSend} » a été préparé pour ${recipient} (+${result.phone}) sur WhatsApp.`,
-        isPureCommand: true,
-      };
-    } else {
-      return {
-        executed: true,
-        actionNote: `WhatsApp ouvert sur le bureau. Numéro non configuré pour ${targetContact}.`,
-        directReply: `WhatsApp est ouvert sur votre écran. Le numéro de "${targetContact}" n'est pas encore enregistré. Dites simplement : « enregistre le contact ${targetContact} : +229... » pour que je m'en souvienne.`,
-        isPureCommand: true,
-      };
-    }
+    return {
+      executed: true,
+      actionNote: (result as any).actionNote || `Message WhatsApp expédié à ${targetContact}.`,
+      directReply: result.message,
+      isPureCommand: true,
+      clientAction: result.clientAction,
+    };
   }
 
   return { executed: false };
