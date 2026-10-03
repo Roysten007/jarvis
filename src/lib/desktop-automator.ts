@@ -43,6 +43,17 @@ export function activateDesktopWindow(opts: {
   } = opts;
 
   return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      return resolve({
+        Found: false,
+        Foreground: false,
+        Title: '',
+        Hwnd: 0,
+        Error: 'Environnement Cloud / Non-Windows (Vercel)',
+        StepsExecuted: 0,
+      });
+    }
+
     if (!fs.existsSync(SCRIPT_PATH)) {
       return resolve({
         Found: false,
@@ -146,6 +157,26 @@ export async function sendWhatsAppMessageAutomated(
     }
   }
 
+  // 1.5. Si nous sommes en environnement Cloud / Web (Vercel sur Linux)
+  if (process.platform !== 'win32') {
+    const universalUrl = phone
+      ? `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    const displayName = contactName || (phone ? `+${phone}` : 'votre contact');
+    return {
+      success: true,
+      phone,
+      contactName: displayName,
+      actionNote: `Action WhatsApp prête pour ${displayName}.`,
+      message: `Message préparé pour **${displayName}** :\n\n> « *${text}* »\n\n📱 **Sur le Cloud / Mobile (Vercel)** : Touchez le bouton ci-dessous pour ouvrir directement WhatsApp avec votre message prêt à l'envoi.`,
+      clientAction: {
+        type: 'open_url',
+        url: universalUrl,
+        label: `Ouvrir WhatsApp (${displayName})`,
+      },
+    };
+  }
+
   // 2. Si un numéro de téléphone est connu (>= 8 chiffres)
   if (phone && phone.length >= 8) {
     const encoded = encodeURIComponent(text);
@@ -245,6 +276,14 @@ export async function launchApplicationDirect(appNameOrKey: string): Promise<{
   name: string;
   message: string;
 }> {
+  if (process.platform !== 'win32') {
+    return {
+      success: false,
+      name: appNameOrKey,
+      message: `Le lancement direct de logiciels physiques (**${appNameOrKey}**) nécessite l'application JARVIS locale sur votre ordinateur Windows physique. Sur le Cloud (Vercel), le contrôle matériel de votre bureau n'est pas accessible.`,
+    };
+  }
+
   const norm = appNameOrKey.toLowerCase().trim();
 
   // Excel

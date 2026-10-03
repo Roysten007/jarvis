@@ -15,9 +15,12 @@ export const supabaseAdmin = createClient(
   }
 );
 
+import { getDataDirectory } from './storage-path';
+
 // Système de stockage local résilient en cas d'attente de migration Supabase
-const DATA_DIR = path.join(process.cwd(), '.data');
-const LOCAL_STORE_FILE = path.join(DATA_DIR, 'jarvis-store.json');
+function getStoreFilePath(): string {
+  return path.join(getDataDirectory(), 'jarvis-store.json');
+}
 
 interface LocalStore {
   conversations: any[];
@@ -29,66 +32,70 @@ interface LocalStore {
   settings: Record<string, any>;
 }
 
+let memoryStoreCache: LocalStore | null = null;
+
 function getLocalStore(): LocalStore {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (!fs.existsSync(LOCAL_STORE_FILE)) {
-      const initial: LocalStore = {
-        conversations: [],
-        messages: [],
-        memories: [
-          {
-            id: 'mem-1',
-            user_email: process.env.ALLOWED_USER_EMAIL || 'kossoumichelroystenseweto@gmail.com',
-            category: 'profile',
-            fact: 'Roysten est étudiant en maths/physique/informatique au Bénin, designer et vibe coder.',
-            importance: 5,
-            tags: ['etudes', 'benin', 'design', 'code'],
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: 'mem-2',
-            user_email: process.env.ALLOWED_USER_EMAIL || 'kossoumichelroystenseweto@gmail.com',
-            category: 'preference',
-            fact: 'Préfère des réponses directes, concises et en français avec un ton d\'assistant d\'élite.',
-            importance: 5,
-            tags: ['ton', 'francais', 'style'],
-            created_at: new Date().toISOString(),
-          }
-        ],
-        tasks: [],
-        projects: [],
-        leads: [],
-        settings: {},
-      };
-      fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(initial, null, 2), 'utf8');
-      return initial;
-    }
-    const content = fs.readFileSync(LOCAL_STORE_FILE, 'utf8');
-    return JSON.parse(content);
-  } catch (e) {
-    return {
-      conversations: [],
-      messages: [],
-      memories: [],
-      tasks: [],
-      projects: [],
-      leads: [],
-      settings: {},
-    };
+  if (memoryStoreCache) {
+    return memoryStoreCache;
   }
+
+  const filePath = getStoreFilePath();
+  try {
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      memoryStoreCache = JSON.parse(content);
+      return memoryStoreCache!;
+    }
+  } catch (e) {
+    // Continuer vers l'initialisation
+  }
+
+  const initial: LocalStore = {
+    conversations: [],
+    messages: [],
+    memories: [
+      {
+        id: 'mem-1',
+        user_email: process.env.ALLOWED_USER_EMAIL || 'kossoumichelroystenseweto@gmail.com',
+        category: 'profile',
+        fact: 'Roysten est étudiant en maths/physique/informatique au Bénin, designer et vibe coder.',
+        importance: 5,
+        tags: ['etudes', 'benin', 'design', 'code'],
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'mem-2',
+        user_email: process.env.ALLOWED_USER_EMAIL || 'kossoumichelroystenseweto@gmail.com',
+        category: 'preference',
+        fact: "Préfère des réponses directes, concises et en français avec un ton d'assistant d'élite.",
+        importance: 5,
+        tags: ['ton', 'francais', 'style'],
+        created_at: new Date().toISOString(),
+      }
+    ],
+    tasks: [],
+    projects: [],
+    leads: [],
+    settings: {},
+  };
+
+  memoryStoreCache = initial;
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(initial, null, 2), 'utf8');
+  } catch (e) {
+    // Pas grave si écriture restreinte, memoryStoreCache est en place
+  }
+
+  return initial;
 }
 
 function saveLocalStore(store: LocalStore) {
+  memoryStoreCache = store;
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(store, null, 2), 'utf8');
+    const filePath = getStoreFilePath();
+    fs.writeFileSync(filePath, JSON.stringify(store, null, 2), 'utf8');
   } catch (e) {
-    console.error('[DB] Erreur sauvegarde locale:', e);
+    // Ignorer si écriture temporairement restreinte
   }
 }
 

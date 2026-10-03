@@ -424,7 +424,7 @@ export function VoiceHandler({
         </button>
       )}
 
-      {/* Bascule Rapide Langue Vocale */}
+      {/* Bascule Rapide Langue Vocale (Desktop / Tablette) */}
       <button
         type="button"
         onClick={() => {
@@ -433,7 +433,7 @@ export function VoiceHandler({
           localStorage.setItem('jarvis_voice_lang', next);
         }}
         title="Basculer la langue vocale : Français ou Anglais"
-        className={`px-2 py-2 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1 ${
+        className={`hidden sm:flex px-2 py-2 rounded-lg border text-[11px] font-bold transition-all items-center gap-1 ${
           voiceLang === 'en'
             ? 'bg-indigo-500/25 border-indigo-400 text-indigo-300 shadow-hud-indigo animate-pulse'
             : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300 hover:border-cyan-400'
@@ -442,27 +442,27 @@ export function VoiceHandler({
         <span>{voiceLang === 'fr' ? '🇫🇷 FR' : '🇬🇧 EN'}</span>
       </button>
 
-      {/* Mode Mains Libres */}
+      {/* Mode Mains Libres (Desktop / Tablette) */}
       <button
         type="button"
         onClick={() => setHandsFree(!handsFree)}
         title="Mode conversationnel continu (Jarvis répond puis réécoute automatiquement)"
-        className={`p-2 rounded-lg border text-[11px] transition-all flex items-center gap-1.5 ${
+        className={`hidden sm:flex p-2 rounded-lg border text-[11px] transition-all items-center gap-1.5 ${
           handsFree
             ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-hud-cyan'
             : 'bg-slate-900/70 border-slate-700 text-slate-400 hover:text-slate-200'
         }`}
       >
         <Radio className={`w-3.5 h-3.5 ${handsFree ? 'text-cyan-400 animate-pulse' : 'text-slate-500'}`} />
-        <span className="hidden sm:inline">Mains libres</span>
+        <span className="hidden md:inline">Mains libres</span>
       </button>
 
-      {/* Studio Vocal / Réglages de la Voix */}
+      {/* Studio Vocal / Réglages de la Voix (Desktop / Tablette) */}
       <button
         type="button"
         onClick={() => setShowSettings(!showSettings)}
         title="Personnaliser la voix de Jarvis"
-        className={`p-2 rounded-lg border transition-all ${
+        className={`hidden sm:flex p-2 rounded-lg border transition-all ${
           showSettings
             ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
             : 'bg-slate-900/70 border-slate-700 text-slate-400 hover:text-cyan-300'

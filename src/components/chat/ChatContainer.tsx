@@ -85,8 +85,8 @@ function getActionMeta(url: string, label?: string): ActionMeta {
     return {
       url,
       title: 'WHATSAPP // MESSAGERIE DIRECTE',
-      subtitle: 'Message préparé, prêt à être envoyé dans WhatsApp Desktop',
-      buttonLabel: label || 'Ouvrir WhatsApp Desktop',
+      subtitle: 'Message pré-rempli, prêt à l\'envoi instantané (1-Tap)',
+      buttonLabel: label || 'Ouvrir WhatsApp & Envoyer',
       icon: MessageSquare,
       borderClass: 'border-emerald-500/50',
       bgClass: 'bg-emerald-950/30',
@@ -377,35 +377,37 @@ export function ChatContainer({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-sm hud-grid flex flex-col">
+    <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-3 sm:space-y-4 font-mono text-sm hud-grid flex flex-col min-h-0">
       {messages.length === 0 && !streamingContent && (
-        <div className="my-auto flex flex-col items-center justify-center text-center p-4 text-slate-500">
-          <ArcReactorWake
-            isMaster={false}
-            onCommandReceived={(cmd) => onVoiceCommand && onVoiceCommand(cmd)}
-            isProcessing={isLoading}
-            isSpeaking={isSpeaking}
-            isAwakeExternal={isAwake}
-            onTapWakeExternal={onTapWake}
-            activeStatusText="Dites simplement 'JARVIS...' ou touchez pour ordonner sans clavier"
-          />
+        <div className="my-auto flex flex-col items-center justify-center text-center p-2 sm:p-4 text-slate-500 max-w-lg mx-auto">
+          <div className="scale-90 sm:scale-100 transition-transform">
+            <ArcReactorWake
+              isMaster={false}
+              onCommandReceived={(cmd) => onVoiceCommand && onVoiceCommand(cmd)}
+              isProcessing={isLoading}
+              isSpeaking={isSpeaking}
+              isAwakeExternal={isAwake}
+              onTapWakeExternal={onTapWake}
+              activeStatusText="Dites 'JARVIS' ou touchez pour commander"
+            />
+          </div>
 
-          <h2 className="text-base font-bold text-slate-200 glow-cyan mt-3 mb-1">
+          <h2 className="text-sm sm:text-base font-bold text-slate-200 glow-cyan mt-2 sm:mt-3 mb-1">
             J.A.R.V.I.S // TERMINAL HOLOGRAPHIQUE
           </h2>
-          <p className="max-w-md text-xs text-slate-400 leading-relaxed font-sans">
-            À vos ordres, Monsieur Roysten. Parlez directement ou touchez l'écran. Je pilote vos applications, WhatsApp, réseaux sociaux et votre environnement de code.
+          <p className="max-w-md text-[11px] sm:text-xs text-slate-400 leading-relaxed font-sans px-2">
+            À vos ordres, Monsieur Roysten. Parlez directement ou écrivez. Je pilote vos applications, WhatsApp, réseaux sociaux et votre prospection.
           </p>
 
-          <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px]">
-            <span className="bg-slate-900/80 border border-cyan-500/20 px-2.5 py-1 rounded text-cyan-300">
-              🎙️ Wake Word : "Jarvis" / "Réveille-toi"
+          <div className="mt-3 flex flex-wrap justify-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px]">
+            <span className="bg-slate-900/80 border border-cyan-500/20 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded text-cyan-300">
+              🎙️ Vocal & Clavier
             </span>
-            <span className="bg-slate-900/80 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-300">
-              🎵 Spotify & WhatsApp Desktop connectés
+            <span className="bg-slate-900/80 border border-emerald-500/20 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded text-emerald-300">
+              📱 WhatsApp & Social
             </span>
-            <span className="bg-slate-900/80 border border-blue-500/20 px-2.5 py-1 rounded text-blue-300">
-              🚀 Pilotage Réseaux (Facebook, X, LinkedIn, Insta)
+            <span className="bg-slate-900/80 border border-blue-500/20 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded text-blue-300">
+              💼 Prospection Cotonou
             </span>
           </div>
         </div>

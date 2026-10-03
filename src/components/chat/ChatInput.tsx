@@ -112,12 +112,12 @@ export function ChatInput({
   };
 
   return (
-    <div className="border-t border-cyan-500/20 bg-[#040814]/95 backdrop-blur-md p-3 font-mono text-xs">
+    <div className="border-t border-cyan-500/20 bg-[#040814]/98 backdrop-blur-md p-2.5 sm:p-3 font-mono text-xs pb-[calc(0.6rem+env(safe-area-inset-bottom))]">
       {/* Suggestions rapides HUD */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-2 text-[11px] text-slate-400">
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 sm:pb-2 mb-1.5 sm:mb-2 text-[10px] sm:text-[11px] text-slate-400 no-scrollbar">
         <button
           onClick={onNewSession}
-          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-cyan-400 hover:text-cyan-300 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-cyan-400 hover:text-cyan-300 transition-colors whitespace-nowrap shrink-0"
         >
           <PlusCircle className="w-3 h-3 text-cyan-400" />
           <span>Nouvelle session</span>
@@ -126,15 +126,15 @@ export function ChatInput({
         {/* Bouton Capture d'écran instantanée */}
         <button
           onClick={() => onSendMessage("Prends une capture d'écran de mon bureau et affiche-la", undefined, false)}
-          className="flex items-center gap-1 bg-slate-900 border border-cyan-500/40 text-cyan-300 px-2 py-1 rounded hover:bg-cyan-500/20 hover:border-cyan-400 transition-colors whitespace-nowrap shadow-hud-cyan"
+          className="flex items-center gap-1 bg-slate-900 border border-cyan-500/40 text-cyan-300 px-2 py-1 rounded hover:bg-cyan-500/20 hover:border-cyan-400 transition-colors whitespace-nowrap shadow-hud-cyan shrink-0"
         >
           <Camera className="w-3 h-3 text-cyan-400" />
-          <span>📸 Capture d'écran</span>
+          <span>📸 Capture</span>
         </button>
 
         <button
           onClick={() => onQuickAction('morning_briefing')}
-          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap shrink-0"
         >
           <Sun className="w-3 h-3 text-amber-400" />
           <span>Morning Briefing</span>
@@ -142,7 +142,7 @@ export function ChatInput({
 
         <button
           onClick={() => onQuickAction('web_search')}
-          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-cyan-400 hover:text-cyan-300 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-cyan-400 hover:text-cyan-300 transition-colors whitespace-nowrap shrink-0"
         >
           <Search className="w-3 h-3 text-cyan-400" />
           <span>Recherche Web</span>
@@ -150,10 +150,10 @@ export function ChatInput({
 
         <button
           onClick={() => onQuickAction('calc')}
-          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-emerald-400 hover:text-emerald-300 transition-colors whitespace-nowrap"
+          className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2 py-1 rounded hover:border-emerald-400 hover:text-emerald-300 transition-colors whitespace-nowrap shrink-0"
         >
           <Calculator className="w-3 h-3 text-emerald-400" />
-          <span>Calculs & Physique</span>
+          <span>Calculs & Math</span>
         </button>
       </div>
 
@@ -178,7 +178,7 @@ export function ChatInput({
       )}
 
       {/* Barre de saisie */}
-      <form onSubmit={handleSubmit} className="flex items-end gap-2">
+      <form onSubmit={handleSubmit} className="flex items-end gap-1.5 sm:gap-2">
         {/* Gestionnaire vocal */}
         <VoiceHandler
           onSpeechResult={handleSpeechResult}
@@ -197,7 +197,7 @@ export function ChatInput({
             type="button"
             onClick={onToggleVoiceAudio}
             title={voiceAudioEnabled ? "Voix de JARVIS activée (cliquer pour couper le son)" : "Voix coupée (cliquer pour activer les réponses orales)"}
-            className={`px-2 py-2 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 ${
+            className={`hidden sm:flex px-2 py-2 rounded-lg border text-xs font-bold transition-all items-center gap-1 ${
               voiceAudioEnabled
                 ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-hud-cyan'
                 : 'bg-slate-900/70 border-slate-700 text-slate-500 hover:text-slate-300'
@@ -219,8 +219,8 @@ export function ChatInput({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          title="Joindre une image ou capture d'écran de votre travail (ou faites Ctrl+V)"
-          className={`p-2 rounded-lg border transition-all ${
+          title="Joindre une image ou capture d'écran (ou Ctrl+V)"
+          className={`p-2 rounded-lg border transition-all shrink-0 ${
             selectedImage
               ? 'bg-cyan-500/30 border-cyan-400 text-cyan-300'
               : 'bg-slate-900/70 border-slate-700 text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40'
@@ -230,7 +230,7 @@ export function ChatInput({
         </button>
 
         {/* Champ texte */}
-        <div className="flex-1 relative bg-[#090e1a] border border-cyan-500/30 rounded-lg focus-within:border-cyan-400 focus-within:shadow-hud-cyan transition-all">
+        <div className="flex-1 relative bg-[#090e1a] border border-cyan-500/30 rounded-lg focus-within:border-cyan-400 focus-within:shadow-hud-cyan transition-all min-w-0">
           <textarea
             ref={textareaRef}
             rows={1}
@@ -247,9 +247,9 @@ export function ChatInput({
                 ? 'À votre écoute, Monsieur Roysten...'
                 : isLoading
                 ? 'JARVIS traite votre requête...'
-                : 'Ordre pour JARVIS... (ou collez une capture d\'écran avec Ctrl+V)'
+                : 'Ordre pour JARVIS...'
             }
-            className="w-full bg-transparent px-3 py-2 text-slate-100 placeholder-slate-500 outline-none resize-none text-xs leading-normal"
+            className="w-full bg-transparent px-3 py-2 text-slate-100 placeholder-slate-500 outline-none resize-none text-base sm:text-xs leading-normal"
           />
         </div>
 

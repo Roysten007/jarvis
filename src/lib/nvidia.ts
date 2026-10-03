@@ -20,7 +20,8 @@ export interface CompletionOptions {
 }
 
 const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
-const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || '';
+const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || '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';
+
 
 // Délais exponentiels pour gestion des quotas et rate limits
 async function sleep(ms: number) {

@@ -303,7 +303,7 @@ export default function JarvisDashboard() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#030712] hud-scanline">
+    <div className="flex flex-col h-[100dvh] min-h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#030712] hud-scanline">
       {/* HUD Header avec Réacteur Maître */}
       <Header
         currentModel={currentModel}

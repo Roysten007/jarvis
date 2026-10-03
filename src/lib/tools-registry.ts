@@ -14,7 +14,7 @@ export interface ToolDefinition {
 
 // 1. RECHERCHE WEB (Tavily avec fallback DuckDuckGo)
 async function searchWeb(query: string) {
-  const tavilyKey = process.env.TAVILY_API_KEY;
+  const tavilyKey = process.env.TAVILY_API_KEY || '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';
   if (tavilyKey) {
     try {
       const res = await fetch('https://api.tavily.com/search', {

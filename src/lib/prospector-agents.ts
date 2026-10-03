@@ -21,18 +21,29 @@ export interface Prospect {
   updatedAt: string;
 }
 
-const PROSPECTS_FILE = path.join(process.cwd(), '.data', 'prospects.json');
+import { getDataDirectory } from './storage-path';
+
+function getProspectsFilePath(): string {
+  return path.join(getDataDirectory(), 'prospects.json');
+}
+
+let cachedProspects: Prospect[] | null = null;
 
 // Récupérer les prospects
 export function getProspects(): Prospect[] {
+  if (cachedProspects) return cachedProspects;
+
   try {
-    if (fs.existsSync(PROSPECTS_FILE)) {
-      const data = fs.readFileSync(PROSPECTS_FILE, 'utf8');
-      return JSON.parse(data);
+    const filePath = getProspectsFilePath();
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      cachedProspects = JSON.parse(data);
+      return cachedProspects!;
     }
   } catch (e) {
-    console.warn('[PROSPECTS] Fichier vide ou introuvable:', e);
+    // Fichier vide ou introuvable
   }
+  cachedProspects = [];
   return [];
 }
 
@@ -67,12 +78,14 @@ export function saveProspect(prospect: Omit<Prospect, 'id' | 'createdAt' | 'upda
     prospects.unshift(fullProspect);
   }
 
+  cachedProspects = prospects;
   try {
-    const dir = path.dirname(PROSPECTS_FILE);
+    const filePath = getProspectsFilePath();
+    const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(PROSPECTS_FILE, JSON.stringify(prospects, null, 2), 'utf8');
+    fs.writeFileSync(filePath, JSON.stringify(prospects, null, 2), 'utf8');
   } catch (e) {
-    console.error('[PROSPECTS_SAVE_ERROR]', e);
+    // Ne pas bloquer si écriture restreinte
   }
 
   return fullProspect;
@@ -85,7 +98,13 @@ export function updateProspectStatus(id: string, status: Prospect['status']): bo
   if (!target) return false;
   target.status = status;
   target.updatedAt = new Date().toISOString();
-  fs.writeFileSync(PROSPECTS_FILE, JSON.stringify(prospects, null, 2), 'utf8');
+  cachedProspects = prospects;
+  try {
+    const filePath = getProspectsFilePath();
+    fs.writeFileSync(filePath, JSON.stringify(prospects, null, 2), 'utf8');
+  } catch (e) {
+    // Ne pas bloquer
+  }
   return true;
 }
 

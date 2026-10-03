@@ -41,7 +41,11 @@ export interface RoystenProfile {
   };
 }
 
-const PROFILE_FILE = path.join(process.cwd(), '.data', 'roysten_profile.json');
+import { getDataDirectory } from './storage-path';
+
+function getProfileFilePath(): string {
+  return path.join(getDataDirectory(), 'roysten_profile.json');
+}
 
 export const DEFAULT_ROYSTEN_PROFILE: RoystenProfile = {
   name: 'Roysten KOSSOU',
@@ -113,16 +117,23 @@ export const DEFAULT_ROYSTEN_PROFILE: RoystenProfile = {
   },
 };
 
+let cachedProfile: RoystenProfile | null = null;
+
 // Charger le profil (avec cache persistant)
 export function getRoystenProfile(): RoystenProfile {
+  if (cachedProfile) return cachedProfile;
+
   try {
-    if (fs.existsSync(PROFILE_FILE)) {
-      const data = fs.readFileSync(PROFILE_FILE, 'utf8');
-      return JSON.parse(data);
+    const filePath = getProfileFilePath();
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      cachedProfile = JSON.parse(data);
+      return cachedProfile!;
     }
   } catch (e) {
-    console.warn('[ROYSTEN_PROFILE] Utilisation profil par défaut:', e);
+    // Utiliser DEFAULT_ROYSTEN_PROFILE
   }
+  cachedProfile = DEFAULT_ROYSTEN_PROFILE;
   return DEFAULT_ROYSTEN_PROFILE;
 }
 
@@ -130,12 +141,14 @@ export function getRoystenProfile(): RoystenProfile {
 export function saveRoystenProfile(profile: Partial<RoystenProfile>): RoystenProfile {
   const current = getRoystenProfile();
   const updated = { ...current, ...profile };
+  cachedProfile = updated;
   try {
-    const dir = path.dirname(PROFILE_FILE);
+    const filePath = getProfileFilePath();
+    const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(PROFILE_FILE, JSON.stringify(updated, null, 2), 'utf8');
+    fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf8');
   } catch (e) {
-    console.error('[ROYSTEN_PROFILE_SAVE_ERROR]', e);
+    // Ne pas bloquer si écriture restreinte
   }
   return updated;
 }
