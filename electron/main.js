@@ -3,35 +3,38 @@ const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
 
+const fs = require('fs');
+const logFile = path.join(__dirname, '..', '.data', 'electron_debug.log');
+try {
+  const dataDir = path.dirname(logFile);
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+} catch (e) {}
+
+function log(...args) {
+  const line = `[${new Date().toISOString()}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')}\n`;
+  try { fs.appendFileSync(logFile, line); } catch(e) {}
+  console.log(...args);
+}
+
 process.on('uncaughtException', (err) => {
-  console.error('[ELECTRON CRITICAL ERROR]', err);
+  log('[ELECTRON CRITICAL ERROR]', err ? err.stack || err.message : err);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[ELECTRON UNHANDLED REJECTION]', reason);
+  log('[ELECTRON UNHANDLED REJECTION]', reason);
 });
 
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
 
+log('=== ELECTRON PROCESS STARTED ===', process.pid);
+
 const PORT = 3000;
 const DEV_URL = `http://localhost:${PORT}`;
 
-// Assurer une seule instance de JARVIS
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  console.log('[ELECTRON] Une autre instance tourne déjà. Quitter.');
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      if (!mainWindow.isVisible()) mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-}
+// Pas de verrou bloquant pour garantir l'ouverture systématique
+log('[ELECTRON] Démarrage direct sans blocage d\'instance.');
 
 // Vérifier si le serveur Next.js tourne déjà
 function checkServerRunning() {
@@ -61,7 +64,7 @@ async function waitForServer(maxAttempts = 30) {
 }
 
 function createWindow() {
-  console.log('[ELECTRON] Création de la fenêtre principale Desktop...');
+  log('[ELECTRON] Création de la fenêtre principale Desktop...');
   
   const iconPath = path.join(__dirname, 'icon.png');
 
@@ -85,15 +88,15 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
-    console.log('[ELECTRON] Interface Next.js chargée avec succès.');
+    log('[ELECTRON] Interface Next.js chargée avec succès.');
     mainWindow.setTitle('JARVIS - Assistant Personnel de Roysten');
   });
 
   mainWindow.webContents.on('did-fail-load', (e, code, desc) => {
-    console.error(`[ELECTRON] Échec du chargement de l'URL (${code}): ${desc}`);
+    log(`[ELECTRON] Échec du chargement de l'URL (${code}): ${desc}`);
   });
 
-  console.log('[ELECTRON] Chargement de:', DEV_URL);
+  log('[ELECTRON] Chargement de:', DEV_URL);
   mainWindow.loadURL(DEV_URL);
 
   mainWindow.focus();
