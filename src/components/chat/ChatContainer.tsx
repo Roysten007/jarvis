@@ -30,10 +30,14 @@ export interface Message {
   createdAt?: string;
   toolCalls?: any;
   clientAction?: {
-    type: 'open_url' | 'screenshot' | 'switch_tab';
+    type: 'open_url' | 'screenshot' | 'switch_tab' | 'media_player';
     url?: string;
     tab?: string;
     label?: string;
+    youtubeVideoId?: string;
+    spotifyUri?: string;
+    mediaTitle?: string;
+    mediaArtist?: string;
   };
 }
 
@@ -508,6 +512,56 @@ export function ChatContainer({
                       src={msg.clientAction.url}
                       alt="Capture d'écran Windows"
                       className="w-full max-h-96 object-contain rounded transition-transform duration-300 group-hover:scale-[1.02]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* LECTEUR MULTIMÉDIA DIRECT // YOUTUBE */}
+              {msg.clientAction?.youtubeVideoId && (
+                <div className="mt-3.5 pt-3 border-t border-red-500/30 rounded-lg p-3 bg-red-950/40 border border-red-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-red-300 font-bold text-xs">
+                      <Music className="w-4 h-4 text-red-400 animate-pulse" />
+                      <span className="glow-red">LECTEUR AUDIO // YOUTUBE EN DIRECT</span>
+                    </div>
+                    <span className="text-[10px] text-red-400/90 font-mono flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                      LECTURE ACTIVE
+                    </span>
+                  </div>
+                  <div className="relative rounded-lg overflow-hidden border border-red-500/40 bg-black aspect-video max-h-60 shadow-lg shadow-red-950/50">
+                    <iframe
+                      src={`https://www.youtube.com/embed/${msg.clientAction.youtubeVideoId}?autoplay=1&enablejsapi=1`}
+                      title={msg.clientAction.mediaTitle || 'YouTube Direct Audio'}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* LECTEUR SPOTIFY DIRECT INTÉGRÉ */}
+              {msg.clientAction?.spotifyUri && (
+                <div className="mt-3.5 pt-3 border-t border-emerald-500/30 rounded-lg p-3 bg-emerald-950/40 border border-emerald-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
+                      <Music className="w-4 h-4 text-emerald-400 animate-pulse" />
+                      <span className="glow-emerald">SPOTIFY // LECTURE EN DIRECT</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400/90 font-mono flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                      SYNCHRONISÉ
+                    </span>
+                  </div>
+                  <div className="rounded-lg overflow-hidden border border-emerald-500/40 bg-black max-h-48 shadow-lg shadow-emerald-950/50">
+                    <iframe
+                      src={`https://open.spotify.com/embed/${msg.clientAction.spotifyUri.replace('spotify:', '').replace(/:/g, '/')}?utm_source=generator&theme=0`}
+                      width="100%"
+                      height="152"
+                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                      loading="lazy"
                     />
                   </div>
                 </div>

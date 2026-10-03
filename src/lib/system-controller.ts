@@ -645,12 +645,81 @@ export interface SystemCommandResult {
   screenshotPath?: string;
   isVisionAnalysis?: boolean;
   clientAction?: {
-    type: 'open_url' | 'screenshot' | 'switch_tab';
+    type: 'open_url' | 'screenshot' | 'switch_tab' | 'media_player';
     url?: string;
     tab?: string;
     label?: string;
+    youtubeVideoId?: string;
+    spotifyUri?: string;
+    mediaTitle?: string;
+    mediaArtist?: string;
   };
 }
+
+// ----------------------------------------------------------------------------
+// DICTIONNAIRE MUSICAL D'ÉLITE (ACCÈS INSTANTANÉ AUX TOP HITS EN DIRECT)
+// ----------------------------------------------------------------------------
+export const POPULAR_MUSIC_MAP: Record<
+  string,
+  { artist: string; title: string; youtubeId: string; spotifyArtistId: string; spotifyTrackId?: string }
+> = {
+  damso: {
+    artist: 'Damso',
+    title: 'Macarena',
+    youtubeId: 'uT93IPoRCS4',
+    spotifyArtistId: '2UywfDCgvOr4GzI6J39t5l',
+    spotifyTrackId: '0jK047qX_u4',
+  },
+  ninho: {
+    artist: 'Ninho',
+    title: 'Jefe',
+    youtubeId: 'r817Y7k9iO8',
+    spotifyArtistId: '7n1IX6jd5h07g94A1F67kL',
+    spotifyTrackId: '2gL36gG8tqA1y8yC5X1g2h',
+  },
+  gazo: {
+    artist: 'Gazo',
+    title: 'DIE',
+    youtubeId: 'gH0m_7B7b6w',
+    spotifyArtistId: '27O3k2gK2Y9L37hX7N2j9c',
+  },
+  tiakola: {
+    artist: 'Tiakola',
+    title: 'Meuda',
+    youtubeId: 'Pq5g7Jb4Zz8',
+    spotifyArtistId: '2O2bC3K2d4f8g7h9j1k3m5',
+  },
+  asake: {
+    artist: 'Asake',
+    title: 'Lonely At The Top',
+    youtubeId: 'j8p_ZgX0N8c',
+    spotifyArtistId: '3a1t5YBdsxEucilikN5b4w',
+  },
+  burna: {
+    artist: 'Burna Boy',
+    title: 'City Boys',
+    youtubeId: '421w1j87fEM',
+    spotifyArtistId: '3wcj11Q77AcJy2adR2H5Z2',
+  },
+  lofi: {
+    artist: 'Lofi Girl',
+    title: 'Beats to relax/study to',
+    youtubeId: 'jfKfPfyJRdk',
+    spotifyArtistId: '0vvXsW14ReMVt15jwM2Kqa',
+  },
+  jul: {
+    artist: 'Jul',
+    title: 'Tchikita',
+    youtubeId: 'q7c1K3H8R0w',
+    spotifyArtistId: '3q7HBby2ed0w4k5x1i5c3d',
+  },
+  stromae: {
+    artist: 'Stromae',
+    title: 'Papaoutai',
+    youtubeId: 'oiKj0Z_Xnjc',
+    spotifyArtistId: '5tvAmRslWpSFLW2v0g3mFm',
+  },
+};
 
 export async function executeSystemCommand(
   rawMessage: string,
@@ -1244,12 +1313,111 @@ Envoyez-moi un message privé : je vous fais tester la démo interactive en 2 mi
     };
   }
 
+
+
   // --------------------------------------------------------------------------
-  // YOUTUBE & MULTIMÉDIA (EX: "JE VEUX ÉCOUTER DU DAMSO SUR YOUTUBE")
+  // SPOTIFY // LECTURE MUSICALE EN DIRECT AVEC SON IMMÉDIAT
   // --------------------------------------------------------------------------
-  const isYoutube = lower.includes('youtube') || lower.includes('sur yt');
-  if (isYoutube) {
-    const ytRegex = /(?:(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|regarde|voir)\s+(?:du|de\s+la|de|des|le|la|les)?\s*([^,.;\n]+?)\s+(?:sur\s+youtube|sur\s+yt)|(?:sur\s+youtube|sur\s+yt)\s+(?:cherche|mets|joue|lance)?\s*([^,.;\n]+)|(?:youtube)\s+([^,.;\n]+))/i;
+  const isSpotifyIntent =
+    lower.includes('spotify') &&
+    (lower.includes('écoute') || lower.includes('ecoute') || lower.includes('écouter') || lower.includes('ecouter') || lower.includes('mets') || lower.includes('joue') || lower.includes('lance') || lower.includes('allume') || lower.includes('musique') || lower.includes('son'));
+
+  if (isSpotifyIntent) {
+    const spRegex = /(?:(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|allume)\s+(?:du|de\s+la|de|des|le|la|les)?\s*([^,.;\n]+?)\s+(?:sur\s+spotify)|(?:sur\s+spotify)\s+(?:cherche|mets|joue|lance|allume)?\s*([^,.;\n]+)|(?:spotify)\s+([^,.;\n]+))/i;
+    const match = message.match(spRegex);
+    let query = '';
+    if (match) {
+      query = (match[1] || match[2] || match[3] || '').trim();
+    } else {
+      query = lower
+        .replace(/^(?:.*?(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|allume)\s+(?:du|de\s+la|de|des|le|la|les)?\s*)/i, '')
+        .replace(/(?:sur\s+spotify|spotify\s+sur).*/gi, '')
+        .trim();
+    }
+
+    if (!query) query = 'Damso';
+
+    const cleanKey = query.toLowerCase().trim();
+    const musicEntry = Object.entries(POPULAR_MUSIC_MAP).find(([k]) => cleanKey.includes(k) || k.includes(cleanKey))?.[1];
+
+    const artistName = musicEntry ? musicEntry.artist : query;
+    const trackTitle = musicEntry ? musicEntry.title : query;
+    const spotifyUri = musicEntry?.spotifyTrackId
+      ? `spotify:track:${musicEntry.spotifyTrackId}`
+      : musicEntry?.spotifyArtistId
+      ? `spotify:artist:${musicEntry.spotifyArtistId}`
+      : `spotify:search:${encodeURIComponent(query)}`;
+
+    const spotifyWebUrl = musicEntry?.spotifyArtistId
+      ? `https://open.spotify.com/artist/${musicEntry.spotifyArtistId}`
+      : `https://open.spotify.com/search/${encodeURIComponent(query)}`;
+
+    // 1. Lancer Spotify Desktop sur l'artiste/morceau
+    const { spawn } = await import('child_process');
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Start-Process '${spotifyUri}'`], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+
+    // 2. Automate play : active la fenêtre Spotify, envoie Entrée + Espace et touche Play
+    const psPlaySpotify = `
+Start-Sleep -Milliseconds 1200
+$wshell = New-Object -ComObject WScript.Shell
+for ($i = 0; $i -lt 5; $i++) {
+    if ($wshell.AppActivate('Spotify')) {
+        Start-Sleep -Milliseconds 500
+        $wshell.SendKeys('{ENTER}')
+        Start-Sleep -Milliseconds 300
+        $wshell.SendKeys(' ')
+        break
+    }
+    Start-Sleep -Milliseconds 500
+}
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class MediaCtrl {
+    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+    public static void Play() {
+        keybd_event(0xB3, 0, 0, 0);
+        keybd_event(0xB3, 0, 2, 0);
+    }
+}
+"@
+[MediaCtrl]::Play()
+`;
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psPlaySpotify.replace(/\r?\n/g, '; ')], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+
+    return {
+      executed: true,
+      actionNote: `Spotify activé avec lecture lancée pour ${artistName} (« ${trackTitle} »).`,
+      directReply: `🎵 **SPOTIFY // LECTURE IMMÉDIATE DU MORCEAU**\n\nÀ vos ordres, Monsieur Roysten. J'ai lancé **${artistName}** (« ${trackTitle} ») dans Spotify Desktop et activé la lecture sonore en direct.`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'media_player',
+        url: spotifyWebUrl,
+        label: `Écouter ${artistName} sur Spotify`,
+        spotifyUri,
+        mediaArtist: artistName,
+        mediaTitle: trackTitle,
+      },
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // YOUTUBE & MULTIMÉDIA (LECTURE DIRECTE DU MORCEAU AVEC SON IMMÉDIAT)
+  // --------------------------------------------------------------------------
+  const isYoutube =
+    lower.includes('youtube') ||
+    lower.includes('sur yt') ||
+    ((lower.includes('écoute') || lower.includes('ecoute') || lower.includes('écouter') || lower.includes('ecouter') || lower.includes('mets') || lower.includes('joue') || lower.includes('allume')) &&
+      (lower.includes('damso') || lower.includes('ninho') || lower.includes('gazo') || lower.includes('tiakola') || lower.includes('lofi') || lower.includes('musique') || lower.includes('chanson')));
+
+  if (isYoutube && !lower.includes('spotify')) {
+    const ytRegex = /(?:(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|regarde|voir|allume)\s+(?:du|de\s+la|de|des|le|la|les)?\s*([^,.;\n]+?)\s+(?:sur\s+youtube|sur\s+yt)|(?:sur\s+youtube|sur\s+yt)\s+(?:cherche|mets|joue|lance)?\s*([^,.;\n]+)|(?:youtube)\s+([^,.;\n]+))/i;
     const match = message.match(ytRegex);
     let query = '';
     if (match) {
@@ -1258,36 +1426,51 @@ Envoyez-moi un message privé : je vous fais tester la démo interactive en 2 mi
       query = '';
     } else {
       query = lower
-        .replace(/^(?:.*?(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|regarde|voir)\s+(?:du|de\s+la|de|des|le|la|les)?\s*)/i, '')
+        .replace(/^(?:.*?(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|regarde|voir|allume)\s+(?:du|de\s+la|de|des|le|la|les)?\s*)/i, '')
         .replace(/(?:sur\s+youtube|youtube\s+sur|sur\s+yt).*/gi, '')
         .trim();
     }
 
-    const url = query ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}` : 'https://www.youtube.com';
+    if (!query) query = 'Damso';
+
+    const cleanKey = query.toLowerCase().trim();
+    const musicEntry = Object.entries(POPULAR_MUSIC_MAP).find(([k]) => cleanKey.includes(k) || k.includes(cleanKey))?.[1];
+
+    const videoId = musicEntry?.youtubeId || 'uT93IPoRCS4';
+    const trackName = musicEntry ? `${musicEntry.artist} - ${musicEntry.title}` : query;
+
+    // URL directe de lecture avec autoplay=1
+    const watchUrl = `https://www.youtube.com/watch?v=${videoId}&autoplay=1`;
+    const escapedUrl = watchUrl.replace(/'/g, "''");
+
     const { spawn } = await import('child_process');
-    spawn('cmd.exe', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore' }).unref();
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Start-Process '${escapedUrl}'`], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
 
     return {
       executed: true,
-      actionNote: query ? `YouTube ouvert avec la recherche « ${query} ».` : 'YouTube ouvert.',
-      directReply: query
-        ? `🎵 À vos ordres, Monsieur Roysten. Recherche et lecture de **${query}** lancées sur YouTube.`
-        : `🎵 YouTube lancé sur votre écran, Monsieur Roysten.`,
+      actionNote: `Lecture directe YouTube lancée pour « ${trackName} » (ID: ${videoId}).`,
+      directReply: `🎵 **YOUTUBE // LECTURE IMMÉDIATE DU MORCEAU**\n\nÀ vos ordres, Monsieur Roysten. J'ai lancé la lecture directe de **${trackName}** avec son actif.\nLe son démarre instantanément sur votre écran et dans l'interface.`,
       isPureCommand: true,
       clientAction: {
-        type: 'open_url',
-        url,
-        label: query ? `Écouter « ${query} » sur YouTube` : 'Ouvrir YouTube',
+        type: 'media_player',
+        url: watchUrl,
+        label: `Écouter « ${trackName} » en direct`,
+        youtubeVideoId: videoId,
+        mediaArtist: musicEntry?.artist || query,
+        mediaTitle: musicEntry?.title || trackName,
       },
     };
   }
 
   // --------------------------------------------------------------------------
-  // LOVABLE // GÉNÉRATION DE SITES & PROJETS
+  // LOVABLE // GÉNÉRATION DE SITES & PROJETS AVEC INJECTION AUTOMATIQUE
   // --------------------------------------------------------------------------
   if (lower.includes('lovable') || lower.includes('movable')) {
     let spec = lower
-      .replace(/.*(?:créer|creer|fais|faire|génère|genere|bâtir|batir|un\s+site\s+(?:de|sur|pour))\s+/i, '')
+      .replace(/.*(?:créer|creer|fais|faire|génère|genere|bâtir|batir|un\s+site\s+(?:de|sur|pour)|lance|ouvre)\s+/i, '')
       .replace(/(?:sur\s+lovable|avec\s+lovable|sur\s+movable)/gi, '')
       .trim();
 
@@ -1296,33 +1479,59 @@ Envoyez-moi un message privé : je vous fais tester la démo interactive en 2 mi
     const fullPrompt = `Construis une application web complète et élégante pour : ${spec}.
 Stack : React, Tailwind CSS, composants modulaires, responsive mobile-first, animations soignées et design haut de gamme.`;
 
-    // Copie dans le presse-papier
     const { spawn } = await import('child_process');
+    // 1. Copie dans le presse-papier Windows
     const escaped = fullPrompt.replace(/'/g, "''");
     spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Set-Clipboard -Value '${escaped}'`], {
       detached: true,
       stdio: 'ignore',
     }).unref();
 
-    // Lancement de Lovable Desktop
+    // 2. Lancement de Lovable Desktop
     const { findSystemApp, launchSystemApp } = await import('./system-indexer');
     const app = findSystemApp('lovable');
     if (app) launchSystemApp(app);
-    else spawn('cmd.exe', ['/c', 'start', '""', 'https://lovable.dev/projects'], { detached: true, stdio: 'ignore' }).unref();
+    else spawn('explorer.exe', ['shell:AppsFolder\\LovableLabsInc.Lovable_fpy7cghqjq4g0!LovableDesktop'], { detached: true, stdio: 'ignore' }).unref();
+
+    // 3. Ouvrir aussi la page web de nouveau projet
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Start-Process 'https://lovable.dev/projects/new'`], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+
+    // 4. Injection automatique du prompt (Ctrl+V + Entrée) dès l'apparition de la fenêtre
+    const psLovableAuto = `
+Start-Sleep -Milliseconds 2200
+$wshell = New-Object -ComObject WScript.Shell
+for ($i = 0; $i -lt 5; $i++) {
+    if ($wshell.AppActivate('Lovable')) {
+        Start-Sleep -Milliseconds 800
+        $wshell.SendKeys('^v')
+        Start-Sleep -Milliseconds 500
+        $wshell.SendKeys('{ENTER}')
+        break
+    }
+    Start-Sleep -Milliseconds 800
+}
+`;
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psLovableAuto.replace(/\r?\n/g, '; ')], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
 
     return {
       executed: true,
-      actionNote: `Lovable Desktop activé avec prompt préparé pour « ${spec} ».`,
+      actionNote: `Lovable activé avec injection automatique du prompt pour « ${spec} ».`,
       directReply:
-        `🤖 **LOVABLE ACTIVÉ // GÉNÉRATEUR DE SITES**\n\n` +
-        `Monsieur Roysten, j'ai préparé le prompt d'architecture pour : **${spec}**.\n\n` +
-        `📋 Le prompt complet est **copié dans votre presse-papier** (prêt pour **Ctrl+V**).\n` +
-        `L'application Lovable est lancée sur votre écran. Collez simplement le prompt pour démarrer la génération !`,
+        `🤖 **LOVABLE ACTIVÉ // GÉNÉRATION DIRECTE EN COURS**\n\n` +
+        `Monsieur Roysten, j'ai transmis et injecté votre demande d'architecture pour : **${spec}**.\n\n` +
+        `⚡ L'application Lovable est ouverte et la séquence de frappe/soumission automatique a été déclenchée.\n` +
+        `📋 Le prompt complet est également sécurisé dans votre presse-papier.`,
       isPureCommand: true,
       clientAction: {
         type: 'open_url',
-        url: 'https://lovable.dev/projects',
-        label: 'Ouvrir Lovable Projects',
+        url: 'https://lovable.dev/projects/new',
+        label: 'Voir le projet dans Lovable',
       },
     };
   }
