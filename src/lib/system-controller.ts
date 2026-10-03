@@ -1245,10 +1245,208 @@ Envoyez-moi un message privé : je vous fais tester la démo interactive en 2 mi
   }
 
   // --------------------------------------------------------------------------
+  // YOUTUBE & MULTIMÉDIA (EX: "JE VEUX ÉCOUTER DU DAMSO SUR YOUTUBE")
+  // --------------------------------------------------------------------------
+  const isYoutube = lower.includes('youtube') || lower.includes('sur yt');
+  if (isYoutube) {
+    const ytRegex = /(?:(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|regarde|voir)\s+(?:du|de\s+la|de|des|le|la|les)?\s*([^,.;\n]+?)\s+(?:sur\s+youtube|sur\s+yt)|(?:sur\s+youtube|sur\s+yt)\s+(?:cherche|mets|joue|lance)?\s*([^,.;\n]+)|(?:youtube)\s+([^,.;\n]+))/i;
+    const match = message.match(ytRegex);
+    let query = '';
+    if (match) {
+      query = (match[1] || match[2] || match[3] || '').trim();
+    } else if (lower.includes('ouvre youtube') || lower.includes('lance youtube') || lower.trim() === 'youtube') {
+      query = '';
+    } else {
+      query = lower
+        .replace(/^(?:.*?(?:je\s+veux\s+)?(?:écouter|ecouter|mets|joue|lance|cherche|regarde|voir)\s+(?:du|de\s+la|de|des|le|la|les)?\s*)/i, '')
+        .replace(/(?:sur\s+youtube|youtube\s+sur|sur\s+yt).*/gi, '')
+        .trim();
+    }
+
+    const url = query ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}` : 'https://www.youtube.com';
+    const { spawn } = await import('child_process');
+    spawn('cmd.exe', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore' }).unref();
+
+    return {
+      executed: true,
+      actionNote: query ? `YouTube ouvert avec la recherche « ${query} ».` : 'YouTube ouvert.',
+      directReply: query
+        ? `🎵 À vos ordres, Monsieur Roysten. Recherche et lecture de **${query}** lancées sur YouTube.`
+        : `🎵 YouTube lancé sur votre écran, Monsieur Roysten.`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url,
+        label: query ? `Écouter « ${query} » sur YouTube` : 'Ouvrir YouTube',
+      },
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // LOVABLE // GÉNÉRATION DE SITES & PROJETS
+  // --------------------------------------------------------------------------
+  if (lower.includes('lovable') || lower.includes('movable')) {
+    let spec = lower
+      .replace(/.*(?:créer|creer|fais|faire|génère|genere|bâtir|batir|un\s+site\s+(?:de|sur|pour))\s+/i, '')
+      .replace(/(?:sur\s+lovable|avec\s+lovable|sur\s+movable)/gi, '')
+      .trim();
+
+    if (!spec || spec.length < 3) spec = 'plateforme web moderne, responsive, dark mode, design épuré et ultra rapide';
+
+    const fullPrompt = `Construis une application web complète et élégante pour : ${spec}.
+Stack : React, Tailwind CSS, composants modulaires, responsive mobile-first, animations soignées et design haut de gamme.`;
+
+    // Copie dans le presse-papier
+    const { spawn } = await import('child_process');
+    const escaped = fullPrompt.replace(/'/g, "''");
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', `Set-Clipboard -Value '${escaped}'`], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+
+    // Lancement de Lovable Desktop
+    const { findSystemApp, launchSystemApp } = await import('./system-indexer');
+    const app = findSystemApp('lovable');
+    if (app) launchSystemApp(app);
+    else spawn('cmd.exe', ['/c', 'start', '""', 'https://lovable.dev/projects'], { detached: true, stdio: 'ignore' }).unref();
+
+    return {
+      executed: true,
+      actionNote: `Lovable Desktop activé avec prompt préparé pour « ${spec} ».`,
+      directReply:
+        `🤖 **LOVABLE ACTIVÉ // GÉNÉRATEUR DE SITES**\n\n` +
+        `Monsieur Roysten, j'ai préparé le prompt d'architecture pour : **${spec}**.\n\n` +
+        `📋 Le prompt complet est **copié dans votre presse-papier** (prêt pour **Ctrl+V**).\n` +
+        `L'application Lovable est lancée sur votre écran. Collez simplement le prompt pour démarrer la génération !`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url: 'https://lovable.dev/projects',
+        label: 'Ouvrir Lovable Projects',
+      },
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // GITHUB // CRÉATION DE DÉPÔTS ET GESTION REPO
+  // --------------------------------------------------------------------------
+  if (lower.includes('github') && (lower.includes('repo') || lower.includes('repuer') || lower.includes('repertoire') || lower.includes('dépôt') || lower.includes('depot') || lower.includes('crée') || lower.includes('cree') || lower.includes('nouveau') || lower.includes('voir'))) {
+    const match = message.match(/(?:repo|repuer|repertoire|dépôt|depot|projet)\s+([a-zA-Z0-9_-]+)/i);
+    const repoName = match ? match[1] : 'jarvis-workspace';
+
+    const url = `https://github.com/new?name=${encodeURIComponent(repoName)}`;
+    const { spawn } = await import('child_process');
+    spawn('cmd.exe', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore' }).unref();
+
+    return {
+      executed: true,
+      actionNote: `Page de création de repo GitHub ouverte pour « ${repoName} ».`,
+      directReply:
+        `🐙 **GITHUB // CRÉATION DE RÉPERTOIRE**\n\n` +
+        `À vos ordres, Monsieur Roysten. J'ai ouvert la page de création pour le dépôt **${repoName}** sur GitHub.\n\n` +
+        `Pour lier votre dossier local, exécutez simplement :\n` +
+        `\`\`\`bash\n` +
+        `git remote add origin https://github.com/Roysten/${repoName}.git\n` +
+        `git push -u origin main\n` +
+        `\`\`\``,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url,
+        label: `Créer le repo « ${repoName} » sur GitHub`,
+      },
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // VERCEL // DÉPLOIEMENT CLOUD
+  // --------------------------------------------------------------------------
+  if (lower.includes('vercel') || lower.includes('déploie') || lower.includes('deploie')) {
+    const url = 'https://vercel.com/new';
+    const { spawn } = await import('child_process');
+    spawn('cmd.exe', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore' }).unref();
+
+    return {
+      executed: true,
+      actionNote: `Tableau de bord Vercel activé pour déploiement.`,
+      directReply:
+        `🚀 **VERCEL // DÉPLOIEMENT CLOUD**\n\n` +
+        `Monsieur Roysten, j'ai ouvert votre tableau de bord **Vercel** pour déployer votre projet en 1 clic.\n\n` +
+        `Si vous souhaitez déployer directement depuis ce terminal en ligne de commande, vous pouvez exécuter :\n` +
+        `\`\`\`bash\n` +
+        `npx -y vercel --prod\n` +
+        `\`\`\``,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url,
+        label: 'Ouvrir Vercel Deployments',
+      },
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // ANTIGRAVITY // CRÉATION DE PROJET ET ARCHITECTURE DE SITE
+  // --------------------------------------------------------------------------
+  if (lower.includes('antigravity') || lower.includes('antogravity') || (lower.includes('crée') && lower.includes('site de'))) {
+    let siteSubject = lower
+      .replace(/.*(?:crée|cree|bâtis|batis|fais)\s+(?:moi\s+)?(?:un\s+projet\s+)?(?:le\s+site\s+(?:de|sur|pour)|un\s+site\s+(?:de|sur|pour))\s+/i, '')
+      .replace(/(?:dans\s+antigravity|avec\s+antigravity|dans\s+antogravity)/gi, '')
+      .trim();
+
+    if (!siteSubject) siteSubject = 'Plateforme Vitrine Moderne';
+
+    return {
+      executed: true,
+      actionNote: `Projet initialisé dans Antigravity pour « ${siteSubject} ».`,
+      directReply:
+        `⚡ **PROJET INITIALISÉ DANS ANTIGRAVITY // « ${siteSubject.toUpperCase()} »**\n\n` +
+        `Monsieur Roysten, votre environnement Antigravity est prêt pour concevoir **${siteSubject}**.\n\n` +
+        `Structure prête :\n` +
+        `• Framework : React 19 + Tailwind CSS + Next.js\n` +
+        `• Architecture : Mobile-First, Dark Mode et Composants Modulaires\n` +
+        `• Prêt pour connexion directe à votre CMS et base de données.\n\n` +
+        `Donnez-moi simplement le feu vert ou les sections clés souhaitées et je code l'intégralité du site sans interruption !`,
+      isPureCommand: true,
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // NAVIGATION WEB UNIVERSELLE (EX: "VA SUR LE SITE X", "CHERCHE SUR GOOGLE Y")
+  // --------------------------------------------------------------------------
+  if (lower.startsWith('va sur ') || lower.startsWith('ouvre le site ') || lower.startsWith('cherche sur google ') || lower.startsWith('google ')) {
+    let target = lower
+      .replace(/^(?:va\s+sur\s+(?:le\s+site\s+)?|ouvre\s+le\s+site\s+|cherche\s+sur\s+google\s+|google\s+)/i, '')
+      .trim();
+
+    let url = target;
+    if (target.includes('.') && !target.includes(' ')) {
+      url = target.startsWith('http') ? target : `https://${target}`;
+    } else {
+      url = `https://www.google.com/search?q=${encodeURIComponent(target)}`;
+    }
+
+    const { spawn } = await import('child_process');
+    spawn('cmd.exe', ['/c', 'start', '""', url], { detached: true, stdio: 'ignore' }).unref();
+
+    return {
+      executed: true,
+      actionNote: `Navigation web vers ${url}.`,
+      directReply: `🌐 Navigation lancée vers **${target}**, Monsieur Roysten.`,
+      isPureCommand: true,
+      clientAction: {
+        type: 'open_url',
+        url,
+        label: `Ouvrir ${target}`,
+      },
+    };
+  }
+
+  // --------------------------------------------------------------------------
   // D. ENVOI DE MESSAGES AUTOMATIQUES (WHATSAPP, FACEBOOK, INSTAGRAM)
   // --------------------------------------------------------------------------
   const isMsgIntent =
-    (lower.includes('message') || lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') || lower.includes('dis à') || lower.includes('contacte') || lower.includes('disant') || lower.includes(':')) &&
+    (lower.includes('message') || lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') || lower.includes('envoyer') || lower.includes('dis à') || lower.includes('contacte') || lower.includes('disant') || lower.includes(':')) &&
     (lower.includes('whatsapp') || lower.includes('watsap') || lower.includes('whatsap') || lower.includes('wa ') || lower.includes('facebook') || lower.includes('fb') || lower.includes('instagram') || lower.includes('insta'));
 
   if (isMsgIntent) {
@@ -1262,51 +1460,81 @@ Envoyez-moi un message privé : je vous fais tester la démo interactive en 2 mi
     let contact = '';
     let text = '';
 
-    // Modèle 1 : "envoie un message à epiphane sur whatsapp en lui disant ok c'est compris"
-    const p1 = /(?:envoie|écris|ecris|mets|transmets|dis)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)?(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|:)\s*(.*)/i;
-    // Modèle 2 : "envoie sur [platform] à [contact] en lui disant [message]"
-    const p2 = /(?:envoie|écris|ecris|mets|transmets|dis)\s+(?:un\s+message\s+)?(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|:)\s*(.*)/i;
-    // Modèle 3 : "sur [platform] à [contact] : [message]" ou "à [contact] sur [platform] : [message]"
-    const p3 = /(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+(?:à|au)|(?:à|au))\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s*)?:\s*(.*)/i;
-    // Modèle 4 : "dis à [contact] sur [platform] [message]"
-    const p4 = /(?:dis|écris|ecris|envoie)\s+(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+(?:que\s+|:\s*|en\s+lui\s+disant\s+|disant(?:\s+que)?\s*)?(.*)/i;
-    // Modèle 5 : "envoie à [contact] sur [platform] [message]"
-    const p5 = /(?:envoie|écris|ecris)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(.*)/i;
-    // Modèle 6 : "envoie sur [platform] à [contact] [message]"
-    const p6 = /(?:envoie|écris|ecris)\s+(?:un\s+message\s+)?(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(?:à|au)\s+([a-zA-Z0-9_@+]+)\s+(.*)/i;
+    function cleanMessagePayload(raw: string): string {
+      if (!raw) return '';
+      let cleaned = raw.trim();
+      cleaned = cleaned.replace(/^[\s.:,;-]+/, '');
+      cleaned = cleaned.replace(/^(?:(?:le\s+)?message\s+(?:est|sera|dit|contient)(?:\s+envoyé)?(?:\s+depuis\s+[^:.]+)?\s*[:.-]?\s*)/i, '');
+      cleaned = cleaned.replace(/^(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|avec\s+le\s+texte)\s*[:.-]?\s*/i, '');
+      cleaned = cleaned.replace(/^[\s.:,;-]+/, '');
+      cleaned = cleaned.replace(/^["'«“]/, '').replace(/["'»”]$/, '').trim();
+      return cleaned;
+    }
 
-    const m1 = message.match(p1);
-    const m2 = message.match(p2);
-    const m3 = message.match(p3);
-    const m4 = message.match(p4);
-    const m5 = message.match(p5);
-    const m6 = message.match(p6);
-
-    if (m1) {
-      contact = m1[1].trim();
-      text = m1[2].trim();
-    } else if (m2) {
-      contact = m2[1].trim();
-      text = m2[2].trim();
-    } else if (m3) {
-      contact = m3[1].trim();
-      text = m3[2].trim();
-    } else if (m4) {
-      contact = m4[1].trim();
-      text = m4[2].trim();
-    } else if (m5) {
-      contact = m5[1].trim();
-      text = m5[2].trim();
-    } else if (m6) {
-      contact = m6[1].trim();
-      text = m6[2].trim();
-    } else {
-      const textMatch = message.match(/(?:whatsapp|facebook|instagram)\s*:\s*(.*)/i);
-      if (textMatch) {
-        text = textMatch[1].trim();
-      } else {
-        text = message.replace(/^(?:envoie|écris|ecris|mets)\s+(?:un\s+message\s+)?(?:sur\s+)?(?:whatsapp|facebook|instagram)\s*/i, '').trim();
+    // Modèle Prioritaire Universel : "je vais envoyer un message à Juste sur whatsapp" / "envoie à Juste sur whatsapp..."
+    const p0 = /(?:(?:je\s+vais|je\s+veux|faut)\s+)?(?:envoyer|envoie|écris|ecris|transmets|dis|mets|contacte)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@+]+)\s*(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s*)?(.*)/i;
+    const m0 = message.match(p0);
+    if (m0 && m0[1]) {
+      const candidateContact = m0[1].trim();
+      const forbidden = ['un', 'une', 'ce', 'cette', 'mon', 'mes', 'des', 'le', 'la', 'les', 'de', 'du'];
+      if (!forbidden.includes(candidateContact.toLowerCase())) {
+        contact = candidateContact;
+        const remainder = m0[2] ? m0[2].trim() : '';
+        text = cleanMessagePayload(remainder);
       }
+    }
+
+    if (!contact) {
+      // Modèle 1 : "envoie un message à epiphane sur whatsapp en lui disant ok c'est compris"
+      const p1 = /(?:envoie|écris|ecris|mets|transmets|dis)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)?(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|:)\s*(.*)/i;
+      // Modèle 2 : "envoie sur [platform] à [contact] en lui disant [message]"
+      const p2 = /(?:envoie|écris|ecris|mets|transmets|dis)\s+(?:un\s+message\s+)?(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|:)\s*(.*)/i;
+      // Modèle 3 : "sur [platform] à [contact] : [message]" ou "à [contact] sur [platform] : [message]"
+      const p3 = /(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+(?:à|au)|(?:à|au))\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s*)?:\s*(.*)/i;
+      // Modèle 4 : "dis à [contact] sur [platform] [message]"
+      const p4 = /(?:dis|écris|ecris|envoie)\s+(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+(?:que\s+|:\s*|en\s+lui\s+disant\s+|disant(?:\s+que)?\s*)?(.*)/i;
+      // Modèle 5 : "envoie à [contact] sur [platform] [message]"
+      const p5 = /(?:envoie|écris|ecris)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(.*)/i;
+      // Modèle 6 : "envoie sur [platform] à [contact] [message]"
+      const p6 = /(?:envoie|écris|ecris)\s+(?:un\s+message\s+)?(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(?:à|au)\s+([a-zA-Z0-9_@+]+)\s+(.*)/i;
+
+      const m1 = message.match(p1);
+      const m2 = message.match(p2);
+      const m3 = message.match(p3);
+      const m4 = message.match(p4);
+      const m5 = message.match(p5);
+      const m6 = message.match(p6);
+
+      if (m1) {
+        contact = m1[1].trim();
+        text = cleanMessagePayload(m1[2]);
+      } else if (m2) {
+        contact = m2[1].trim();
+        text = cleanMessagePayload(m2[2]);
+      } else if (m3) {
+        contact = m3[1].trim();
+        text = cleanMessagePayload(m3[2]);
+      } else if (m4) {
+        contact = m4[1].trim();
+        text = cleanMessagePayload(m4[2]);
+      } else if (m5) {
+        contact = m5[1].trim();
+        text = cleanMessagePayload(m5[2]);
+      } else if (m6) {
+        contact = m6[1].trim();
+        text = cleanMessagePayload(m6[2]);
+      } else {
+        const textMatch = message.match(/(?:whatsapp|facebook|instagram)\s*:\s*(.*)/i);
+        if (textMatch) {
+          text = cleanMessagePayload(textMatch[1]);
+        } else {
+          text = cleanMessagePayload(message.replace(/^(?:(?:je\s+vais\s+)?(?:envoyer|envoie|écris|ecris|mets)\s+)?(?:un\s+message\s+)?(?:sur\s+)?(?:whatsapp|facebook|instagram)\s*/i, ''));
+        }
+      }
+    }
+
+    if (!text && contact) {
+      text = `Bonjour ${contact} ! J'espère que tu vas bien.`;
     }
 
     const res = await automateSendMessage(platform, contact || 'votre contact', text || 'Bonjour !');

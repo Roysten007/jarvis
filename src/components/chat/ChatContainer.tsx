@@ -188,6 +188,48 @@ function getActionMeta(url: string, label?: string): ActionMeta {
     };
   }
 
+  // GitHub
+  if (lower.includes('github.com')) {
+    return {
+      url,
+      title: 'GITHUB // DÉPÔT DE CODE SOURCE',
+      subtitle: 'Création de repo et liaison avec votre code local',
+      buttonLabel: label || 'Accéder à GitHub',
+      icon: Terminal,
+      borderClass: 'border-slate-500/50',
+      bgClass: 'bg-slate-900/40',
+      btnClass: 'bg-slate-700 hover:bg-slate-600 text-white shadow-slate-900/40',
+    };
+  }
+
+  // Lovable
+  if (lower.includes('lovable.dev')) {
+    return {
+      url,
+      title: 'LOVABLE // GÉNÉRATEUR IA DE SITES',
+      subtitle: 'Prompt d\'architecture copié dans votre presse-papier (Ctrl+V)',
+      buttonLabel: label || 'Ouvrir Lovable Projects',
+      icon: Sparkles,
+      borderClass: 'border-pink-500/50',
+      bgClass: 'bg-pink-950/30',
+      btnClass: 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-pink-900/40',
+    };
+  }
+
+  // Vercel
+  if (lower.includes('vercel.com')) {
+    return {
+      url,
+      title: 'VERCEL // DÉPLOIEMENT CLOUD',
+      subtitle: 'Déploiement en 1 clic avec certificat SSL et CDN mondial',
+      buttonLabel: label || 'Déployer sur Vercel',
+      icon: Globe,
+      borderClass: 'border-cyan-500/50',
+      bgClass: 'bg-cyan-950/30',
+      btnClass: 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-900/40',
+    };
+  }
+
   // YouTube
   if (lower.includes('youtube.com')) {
     return {
