@@ -19,8 +19,15 @@ export function launchForeground(
       let psCommand = '';
       const escapedTarget = target.replace(/'/g, "''");
 
-      if (isProtocolOrUrl || isLnk || isShell) {
-        psCommand = `Start-Process -FilePath '${escapedTarget}'`;
+      if (isProtocolOrUrl || isShell) {
+        psCommand = `Start-Process explorer.exe -ArgumentList '${escapedTarget}'`;
+      } else if (isLnk) {
+        if (args.length > 0) {
+          const psArgs = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(', ');
+          psCommand = `Start-Process -FilePath '${escapedTarget}' -ArgumentList @(${psArgs})`;
+        } else {
+          psCommand = `Start-Process explorer.exe -ArgumentList '${escapedTarget}'`;
+        }
       } else if (args.length > 0) {
         const psArgs = args.map((a) => `'${a.replace(/'/g, "''")}'`).join(', ');
         psCommand = `Start-Process -FilePath '${escapedTarget}' -ArgumentList @(${psArgs}) -WindowStyle Normal`;
@@ -406,8 +413,11 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
      lower.includes('message') || lower.includes('dis à') || lower.includes('dis a') ||
      lower.includes('texte') || lower.includes(':'))
   ) {
-    const contactMatch = message.match(/(?:à|a|pour)\s+([a-zA-Z0-9_\-\+]+)/i);
-    const contactName = contactMatch ? contactMatch[1].trim() : '';
+    const phoneMatch = message.match(/(?:\+?[0-9]{8,15})/);
+    const cleanPhone = phoneMatch ? phoneMatch[0].replace(/[^0-9]/g, '') : '';
+    const contactMatch = message.match(/(?:à|a|au|pour)\s+([a-zA-Z0-9_\-\+]+)/i);
+    const rawContact = contactMatch ? contactMatch[1].trim() : '';
+    const contactName = cleanPhone || rawContact;
 
     let msgToSend = '';
     if (message.includes(':')) {
@@ -417,20 +427,29 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     } else if (lower.includes('pour lui dire')) {
       msgToSend = message.split(/pour lui dire(?:\s+que)?/i)[1]?.trim() || '';
     } else {
-      msgToSend = contactName ? `Salut ${contactName} ! Message rédigé depuis JARVIS.` : 'Bonjour ! Message envoyé depuis JARVIS Assistant.';
+      msgToSend = rawContact ? `Salut ${rawContact} ! Message rédigé depuis JARVIS.` : 'Bonjour ! Message envoyé depuis JARVIS Assistant.';
     }
 
     if (!msgToSend || msgToSend.length < 2) {
-      msgToSend = contactName ? `Salut ${contactName} !` : 'Bonjour !';
+      msgToSend = rawContact ? `Salut ${rawContact} !` : 'Bonjour !';
     }
 
-    await sendWhatsAppMessage(msgToSend, contactName);
-    const target = contactName || 'votre contact';
-    const waProtocolUrl = `whatsapp://send?text=${encodeURIComponent(msgToSend)}`;
+    const hasPhone = cleanPhone && cleanPhone.length >= 8;
+    const waProtocolUrl = hasPhone
+      ? `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msgToSend)}`
+      : `whatsapp://send?text=${encodeURIComponent(msgToSend)}`;
+
+    await sendWhatsAppMessage(msgToSend, hasPhone ? cleanPhone : contactName);
+    const target = hasPhone ? cleanPhone : (rawContact || 'votre contact');
+
+    const replyMsg = hasPhone
+      ? `C'est fait, Monsieur Roysten. WhatsApp est ouvert directement sur la conversation avec ${cleanPhone} avec votre message :\n\n« ${msgToSend} »\n\n📋 *Copié dans le presse-papier Windows. Appuyez sur Entrée dans WhatsApp pour envoyer.*`
+      : `C'est fait, Monsieur Roysten. WhatsApp Desktop est ouvert avec votre message pour ${target} :\n\n« ${msgToSend} »\n\n📋 *Copié dans le presse-papier Windows.*\n💡 *Pour ouvrir directement la discussion d'un contact précis, précisez son numéro (ex : « envoie un message au +229XXXXXXXX : salut »).*`;
+
     return {
       executed: true,
-      actionNote: `L'application native WhatsApp a été ouverte sur votre écran avec le message pour ${target} : "${msgToSend}". Le texte a également été copié dans votre presse-papier.`,
-      directReply: `C'est fait Monsieur Roysten. L'application WhatsApp est lancée sur votre écran avec votre message prêt pour ${target} :\n\n« ${msgToSend} »\n\n📋 *Le texte est également copié dans votre presse-papier Windows.*\n\n👉 [💬 Ouvrir dans WhatsApp Desktop](${waProtocolUrl})`,
+      actionNote: `Message préparé dans WhatsApp Desktop pour ${target}.`,
+      directReply: replyMsg,
       isPureCommand: true,
       clientAction: {
         type: 'open_url',
