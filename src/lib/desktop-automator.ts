@@ -157,6 +157,42 @@ export async function sendWhatsAppMessageAutomated(
     }
   }
 
+  // 1.2. Tentative d'envoi prioritaire via la Passerelle WhatsApp Baileys (Headless / Zero Fenêtre)
+  const gatewayUrl = process.env.WHATSAPP_GATEWAY_URL || 'http://localhost:3001';
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const statusRes = await fetch(`${gatewayUrl}/status`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (statusRes.ok) {
+      const statusData = await statusRes.json();
+      if (statusData.connected && phone) {
+        const sendRes = await fetch(`${gatewayUrl}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, message: text }),
+        });
+
+        if (sendRes.ok) {
+          const sendData = await sendRes.json();
+          if (sendData.success) {
+            const displayName = contactName || `+${phone}`;
+            return {
+              success: true,
+              phone,
+              contactName: displayName,
+              actionNote: `Message WhatsApp expédié via la passerelle autonome Baileys.`,
+              message: `⚡ Message expédié automatiquement en arrière-plan à **${displayName}** (+${phone}) via votre passerelle WhatsApp sans aucune fenêtre ouverte !\n\n> « *${text}* »`,
+            };
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // Passerelle inactive ou non joignable, bascule automatique sur les modes de secours
+  }
+
   // 1.5. Si nous sommes en environnement Cloud / Web (Vercel sur Linux)
   if (process.platform !== 'win32') {
     const universalUrl = phone

@@ -19,6 +19,7 @@ import {
   Palette,
   ArrowUpRight,
   Sparkles,
+  Mail,
 } from 'lucide-react';
 
 import { ArcReactorWake } from '../hud/ArcReactorWake';
@@ -91,6 +92,20 @@ function getActionMeta(url: string, label?: string): ActionMeta {
       borderClass: 'border-emerald-500/50',
       bgClass: 'bg-emerald-950/30',
       btnClass: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/40',
+    };
+  }
+
+  // Gmail / Courrier électronique
+  if (lower.startsWith('mailto:') || lower.includes('mail.google.com')) {
+    return {
+      url,
+      title: 'GMAIL // MESSAGERIE ÉLECTRONIQUE',
+      subtitle: 'Email rédigé avec destinataire, objet et message pré-remplis',
+      buttonLabel: label || 'Ouvrir Gmail & Envoyer',
+      icon: Mail,
+      borderClass: 'border-rose-500/50',
+      bgClass: 'bg-rose-950/30',
+      btnClass: 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/40',
     };
   }
 

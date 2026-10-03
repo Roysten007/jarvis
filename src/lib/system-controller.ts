@@ -1616,6 +1616,60 @@ Stack : React, Tailwind CSS, composants modulaires, responsive mobile-first, ani
   }
 
   // --------------------------------------------------------------------------
+  // D.0 ENVOI D'EMAILS AUTOMATIQUES (GMAIL / SMTP // TONY STARK STYLE)
+  // --------------------------------------------------------------------------
+  const isEmailIntent =
+    (lower.includes('mail') || lower.includes('email') || lower.includes('courriel') || (lower.includes('@') && lower.includes('.'))) &&
+    (lower.includes('envoie') || lower.includes('envoyer') || lower.includes('écris') || lower.includes('ecris') || lower.includes('transmets') || lower.includes('rédige') || lower.includes('redige'));
+
+  if (isEmailIntent) {
+    const { sendJarvisEmail } = await import('./email-service');
+
+    // Détection de l'adresse email destinataire
+    const emailMatch = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const toEmail = emailMatch ? emailMatch[0] : '';
+
+    // Détection de l'objet / sujet (ex: "avec pour objet Devis", "sujet : Réunion")
+    let subject = 'Message de Roysten KOSSOU // JARVIS';
+    const subjectMatch = message.match(/(?:objet|sujet)\s*[:=]?\s*([^,;.\n]+)/i);
+    if (subjectMatch && subjectMatch[1]) {
+      subject = subjectMatch[1].trim();
+    }
+
+    // Nettoyage et extraction du corps du texte
+    let bodyText = message;
+    if (toEmail) {
+      bodyText = bodyText.replace(toEmail, '');
+    }
+    bodyText = bodyText.replace(/^(?:(?:je\s+veux|je\s+vais|faut)\s+)?(?:envoyer|envoie|écris|ecris|transmets)\s+(?:un\s+)?(?:email|mail|courriel)\s+(?:à|au)\s*/i, '');
+    if (subjectMatch) {
+      bodyText = bodyText.replace(subjectMatch[0], '');
+    }
+    bodyText = bodyText.replace(/(?:avec\s+le\s+message|qui\s+dit|disant(?:\s+que)?|message\s*[:=]?)\s*/i, '');
+    bodyText = bodyText.replace(/^[\s.:,;-]+/, '').trim();
+
+    if (!bodyText) {
+      bodyText = `Bonjour,\n\nJe fais suite à nos récents échanges.\n\nBien cordialement,\nRoysten KOSSOU`;
+    }
+
+    if (toEmail) {
+      const emailRes = await sendJarvisEmail({
+        to: toEmail,
+        subject,
+        body: bodyText,
+      });
+
+      return {
+        executed: true,
+        actionNote: emailRes.actionNote,
+        directReply: emailRes.message,
+        isPureCommand: true,
+        clientAction: emailRes.clientAction,
+      };
+    }
+  }
+
+  // --------------------------------------------------------------------------
   // D. ENVOI DE MESSAGES AUTOMATIQUES (WHATSAPP, FACEBOOK, INSTAGRAM)
   // --------------------------------------------------------------------------
   const isMsgIntent =
