@@ -126,8 +126,9 @@ export default function JarvisDashboard() {
                   receivedClientAction = parsed.clientAction;
                   try {
                     const actionUrl = parsed.clientAction.url;
-                    // Si c'est un protocole d'application native Windows (spotify:, vscode:, whatsapp:, canva:)
-                    if (/^(spotify|vscode|whatsapp|canva|capcut):/i.test(actionUrl)) {
+                    if (window.electronAPI?.openExternal) {
+                      window.electronAPI.openExternal(actionUrl);
+                    } else if (/^(spotify|vscode|whatsapp|canva|capcut):/i.test(actionUrl)) {
                       const link = document.createElement('a');
                       link.href = actionUrl;
                       link.style.display = 'none';

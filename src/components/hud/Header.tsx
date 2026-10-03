@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Cpu, Clock, Mic, Sparkles, Activity } from 'lucide-react';
+import { ShieldCheck, Cpu, Clock, Mic, Sparkles, Activity, Pin, Monitor } from 'lucide-react';
 import { JARVIS_CONFIG } from '@/lib/config';
 
 import { ArcReactorWake } from './ArcReactorWake';
@@ -22,6 +22,24 @@ export function Header({
   isLoading = false,
 }: HeaderProps) {
   const [time, setTime] = useState<string>('');
+  const [isDesktop, setIsDesktop] = useState<boolean>(false);
+  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+      setIsDesktop(true);
+      window.electronAPI.getAlwaysOnTop().then((pinned) => {
+        setIsAlwaysOnTop(pinned);
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleTogglePin = async () => {
+    if (window.electronAPI?.toggleAlwaysOnTop) {
+      const newState = await window.electronAPI.toggleAlwaysOnTop();
+      setIsAlwaysOnTop(newState);
+    }
+  };
 
   useEffect(() => {
     const updateTime = () => {
@@ -103,8 +121,30 @@ export function Header({
         </div>
       </div>
 
-      {/* Horloge Bénin & Statut */}
+      {/* Horloge Bénin & Statut Desktop */}
       <div className="flex items-center gap-3">
+        {isDesktop && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTogglePin}
+              title={isAlwaysOnTop ? 'Désactiver le premier plan' : 'Garder JARVIS toujours au premier plan'}
+              className={`flex items-center gap-1 px-2 py-0.8 rounded text-[10px] border transition-colors ${
+                isAlwaysOnTop
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400'
+                  : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:text-slate-200'
+              }`}
+            >
+              <Pin className={`w-3 h-3 ${isAlwaysOnTop ? 'rotate-45 text-cyan-400 fill-cyan-400' : ''}`} />
+              <span className="hidden sm:inline">{isAlwaysOnTop ? 'ÉPINGLÉ' : 'ÉPINGLER'}</span>
+            </button>
+            <div className="hidden xl:flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-[10px]">
+              <Monitor className="w-3 h-3" />
+              <span>DESKTOP APP</span>
+              <span className="text-[9px] text-slate-500 ml-1">Ctrl+Shift+J</span>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center gap-1.5 text-cyan-300 bg-cyan-950/30 border border-cyan-500/20 px-2.5 py-1 rounded">
           <Clock className="w-3.5 h-3.5 text-cyan-400" />
           <span className="font-bold">{time || '--:--:--'}</span>
