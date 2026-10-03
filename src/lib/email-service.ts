@@ -24,7 +24,7 @@ export interface EmailResult {
 }
 
 const GMAIL_USER = process.env.GMAIL_USER || process.env.ALLOWED_USER_EMAIL || 'kossoumichelroystenseweto@gmail.com';
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || 'kihfomwemgkpliww';
 
 /**
  * Envoie un email en tâche de fond via Gmail SMTP ou prépare le lien universel
