@@ -211,12 +211,8 @@ function getActionMeta(url: string, label?: string): ActionMeta {
 }
 
 function extractActionUrl(msg: Message): { url: string; label?: string } | null {
-  if (msg.clientAction?.url) {
+  if (msg.clientAction?.url && msg.clientAction.url.startsWith('http')) {
     return { url: msg.clientAction.url, label: msg.clientAction.label };
-  }
-  const match = msg.content.match(/\[([^\]]+)\]\(([^)]+)\)/);
-  if (match) {
-    return { url: match[2], label: match[1] };
   }
   return null;
 }

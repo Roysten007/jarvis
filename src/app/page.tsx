@@ -76,50 +76,6 @@ export default function JarvisDashboard() {
     setStreamingContent('');
     speechSentenceBufferRef.current = '';
 
-    // === OUVERTURE DIRECTE 100% AUTOMATIQUE SANS CLIQUER SUR AUCUN LIEN ===
-    const lower = text.toLowerCase().trim();
-    const openVerbs = ['ouvre', 'lance', 'allume', 'demarre', 'démarre', 'start', 'open', 'mets', 'joue', 'active', 'go'];
-    const hasOpen = openVerbs.some((v) => lower.includes(v));
-
-    try {
-      if (lower.includes('spotify') && (hasOpen || lower.includes('musique') || lower.includes('chanson') || lower.includes('son'))) {
-        const match = lower.match(/(?:mets|joue|lance|cherche)\s+(?:de\s+la\s+musique|du|de|des)?\s*(.*?)(?:\s+sur\s+spotify|$)/);
-        const q = match && match[1] && !match[1].includes('musique') && match[1].trim() !== 'spotify' ? match[1].trim() : '';
-        const url = q ? `spotify:search:${encodeURIComponent(q)}` : 'spotify:';
-        window.location.href = url;
-      } else if ((lower.includes('vs code') || lower.includes('vscode') || lower.includes('zcode') || lower.includes('mon code') || lower === 'code') && (hasOpen || lower === 'code')) {
-        window.location.href = 'vscode://file/c:/Users/ADMIN/Documents/Jarvis';
-      } else if (lower.includes('whatsapp') && hasOpen && !lower.includes('message') && !lower.includes('écris') && !lower.includes('ecris') && !lower.includes(':')) {
-        window.location.href = 'whatsapp:';
-      } else if (lower.includes('whatsapp') && (lower.includes('message') || lower.includes('écris') || lower.includes('ecris') || lower.includes(':'))) {
-        const phoneMatch = text.match(/(?:\+?[0-9]{8,15})/);
-        const cleanPhone = phoneMatch ? phoneMatch[0].replace(/[^0-9]/g, '') : '';
-        let msg = '';
-        if (text.includes(':')) msg = text.split(':')[1]?.trim() || '';
-        else msg = text.replace(/.*(?:whatsapp|message|écris|ecris|dis à|dis a)/i, '').trim();
-        const waUrl = cleanPhone 
-          ? `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`
-          : `whatsapp://send?text=${encodeURIComponent(msg)}`;
-        window.location.href = waUrl;
-      } else if ((lower.includes('instagram') || lower === 'insta') && hasOpen) {
-        window.open('https://www.instagram.com', '_blank', 'noopener,noreferrer');
-      } else if (lower.includes('facebook') && hasOpen) {
-        window.open('https://www.facebook.com', '_blank', 'noopener,noreferrer');
-      } else if ((lower.includes('twitter') || lower === 'ouvre x' || lower === 'lance x') && hasOpen) {
-        window.open('https://x.com', '_blank', 'noopener,noreferrer');
-      } else if (lower.includes('canva') && hasOpen) {
-        window.open('https://www.canva.com', '_blank', 'noopener,noreferrer');
-      } else if (lower.includes('capcut') && hasOpen) {
-        window.open('https://www.capcut.com', '_blank', 'noopener,noreferrer');
-      } else if (lower.includes('youtube') && hasOpen) {
-        const match = text.match(/cherche\s+(.*?)\s+sur\s+youtube/i);
-        const q = match ? match[1].trim() : '';
-        window.open(q ? `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}` : 'https://youtube.com', '_blank', 'noopener,noreferrer');
-      }
-    } catch (e) {
-      console.warn('[INSTANT AUTO-LAUNCH]', e);
-    }
-
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',

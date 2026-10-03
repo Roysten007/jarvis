@@ -5,6 +5,26 @@ import fs from 'fs';
 
 // Exécution directe d'un processus Windows sans intermédiaire cmd.exe
 // Exécution d'un processus Windows avec forçage de focus au premier plan de l'écran
+// Exécution d'un script en session interactive Windows utilisateur via schtasks /IT
+export function runInteractiveHelper(psScriptContent: string): void {
+  try {
+    const tmpDir = path.join(process.cwd(), '.data');
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const tmpScript = path.join(tmpDir, 'interactive_action.ps1');
+    fs.writeFileSync(tmpScript, psScriptContent, 'utf8');
+
+    const cmd = `schtasks /Create /TN 'JarvisInteractiveRunner' /TR 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${tmpScript}"' /SC ONCE /ST 00:00 /F /IT; schtasks /Run /TN 'JarvisInteractiveRunner'`;
+    const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    p.unref();
+  } catch (e) {
+    console.warn('[INTERACTIVE RUNNER ERROR]', e);
+  }
+}
+
+// Exécution d'un processus Windows avec forçage de focus au premier plan de l'écran
 export function launchForeground(
   target: string,
   args: string[] = [],
@@ -35,18 +55,23 @@ export function launchForeground(
         psCommand = `Start-Process -FilePath '${escapedTarget}' -WindowStyle Normal`;
       }
 
-      if (windowTitleHints.length > 0) {
-        const activateCode = windowTitleHints
-          .map((h) => `$ws.AppActivate('${h.replace(/'/g, "''")}');`)
-          .join(' ');
-        psCommand += `; Start-Sleep -Milliseconds 600; $ws = New-Object -ComObject WScript.Shell; ${activateCode}`;
-      }
-
       const p = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCommand], {
         detached: true,
         stdio: 'ignore',
       });
       p.unref();
+
+      // Forcer l'activation de la fenêtre au premier plan sur le bureau interactif de Roysten
+      if (windowTitleHints.length > 0) {
+        const activateCode = windowTitleHints
+          .map((h) => `$ws.AppActivate('${h.replace(/'/g, "''")}');`)
+          .join('\n');
+        runInteractiveHelper(`
+Start-Sleep -Milliseconds 700
+$ws = New-Object -ComObject WScript.Shell
+${activateCode}
+`);
+      }
 
       resolve({ success: true, message: `Lancé et activé au premier plan : ${path.basename(target)}` });
     } catch (err: any) {
@@ -70,25 +95,63 @@ export function copyToClipboard(text: string): boolean {
   }
 }
 
-// Action WhatsApp : Rédiger ou envoyer un message directement
+// Action WhatsApp : Rédiger et expédier un message réellement sur WhatsApp Desktop
 export async function sendWhatsAppMessage(
   messageText: string,
   contactOrPhone?: string
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; phone?: string; contactName?: string; message: string }> {
   const text = messageText.trim();
   const encoded = encodeURIComponent(text);
-
-  // Copier le texte dans le presse-papier Windows
   copyToClipboard(text);
 
-  // Si un numéro est détecté (+229..., 00229...)
-  const cleanPhone = contactOrPhone?.replace(/[^0-9]/g, '');
-  if (cleanPhone && cleanPhone.length >= 8) {
-    return launchForeground(`whatsapp://send?phone=${cleanPhone}&text=${encoded}`, [], ['WhatsApp']);
+  const { resolveContactPhone } = await import('./db');
+  const resolved = contactOrPhone ? await resolveContactPhone(contactOrPhone) : null;
+  const phone = resolved ? resolved.phone : (contactOrPhone?.replace(/[^0-9]/g, '') || '');
+  const contactName = resolved ? resolved.name : (contactOrPhone || '');
+
+  if (phone && phone.length >= 8) {
+    // 1. Lancement de la conversation WhatsApp ciblée
+    await launchForeground(`whatsapp://send?phone=${phone}&text=${encoded}`, [], ['WhatsApp']);
+
+    // 2. Frappe automatique de la touche Entrée sur WhatsApp dans la session interactive après 2.3s
+    runInteractiveHelper(`
+Start-Sleep -Milliseconds 2300
+$ws = New-Object -ComObject WScript.Shell
+$act = $ws.AppActivate('WhatsApp')
+if ($act) {
+    Start-Sleep -Milliseconds 400
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WaSenderKey {
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+    public static void PressEnter() {
+        keybd_event(0x0D, 0, 0, 0);
+        System.Threading.Thread.Sleep(50);
+        keybd_event(0x0D, 0, 2, 0);
+    }
+}
+"@
+    [WaSenderKey]::PressEnter()
+}
+`);
+
+    return {
+      success: true,
+      phone,
+      contactName: contactName || phone,
+      message: `Message envoyé à ${contactName || phone} sur WhatsApp.`,
+    };
   }
 
-  // Ouvrir WhatsApp Desktop natif avec le message prêt
-  return launchForeground(`whatsapp://send?text=${encoded}`, [], ['WhatsApp']);
+  // Si aucun numéro trouvé, lancer WhatsApp Desktop
+  await launchForeground('shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App', [], ['WhatsApp']);
+  return {
+    success: false,
+    contactName,
+    message: `WhatsApp Desktop ouvert, numéro non renseigné pour ${contactName}.`,
+  };
 }
 
 // Action Spotify : Lancer l'application native Spotify au premier plan
@@ -97,29 +160,20 @@ export async function playSpotify(query?: string): Promise<{ success: boolean; m
     const enc = encodeURIComponent(query.trim());
     return launchForeground(`spotify:search:${enc}`, [], ['Spotify']);
   }
-  // Lancement direct de l'application native Spotify Windows
-  const res = await launchForeground('spotify:', [], ['Spotify']);
-  if (!res.success) {
-    return launchForeground('shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', [], ['Spotify']);
-  }
-  return res;
+  return launchForeground('shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify', [], ['Spotify']);
 }
 
-// Action VS Code / Antigravity / ZCode : Ouvrir un projet ou fichier au premier plan
+// Action VS Code : Ouvrir un projet ou fichier au premier plan
 export async function openVSCode(targetPath?: string): Promise<{ success: boolean; message: string }> {
   const proj = targetPath || 'c:\\Users\\ADMIN\\Documents\\Jarvis';
+  const codeExe = `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe`;
+  if (fs.existsSync(codeExe)) {
+    return launchForeground(codeExe, [proj], ['Visual Studio Code', 'Code']);
+  }
   if (fs.existsSync(`C:\\Users\\ADMIN\\Desktop\\Antigravity.lnk`)) {
-    launchForeground(`C:\\Users\\ADMIN\\Desktop\\Antigravity.lnk`, [proj], ['Antigravity', 'Visual Studio Code', 'Code']);
+    return launchForeground(`C:\\Users\\ADMIN\\Desktop\\Antigravity.lnk`, [proj], ['Antigravity', 'Code']);
   }
-  if (fs.existsSync(`C:\\Users\\ADMIN\\Desktop\\ZCode.lnk`)) {
-    launchForeground(`C:\\Users\\ADMIN\\Desktop\\ZCode.lnk`, [proj], ['ZCode', 'Visual Studio Code', 'Code']);
-  }
-  const p = findExistingExe(KNOWN_PATHS.vscode);
-  if (p) {
-    launchForeground(p, [proj], ['Visual Studio Code', 'Code', 'Antigravity', 'ZCode']);
-  }
-  launchForeground(`vscode://file/${proj.replace(/\\/g, '/')}`, [], ['Visual Studio Code', 'Code']);
-  return { success: true, message: 'VS Code / Antigravity activé avec le projet.' };
+  return launchForeground(`vscode://file/${proj.replace(/\\/g, '/')}`, [], ['Visual Studio Code', 'Code']);
 }
 
 // Action YouTube : Recherche et lancement de vidéo
@@ -141,28 +195,34 @@ const KNOWN_PATHS = {
     `C:\\Users\\ADMIN\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe`,
     `C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe`,
   ],
+  firefox: [
+    `C:\\Users\\ADMIN\\Desktop\\Firefox.exe`,
+    `C:\\Program Files\\Mozilla Firefox\\firefox.exe`,
+  ],
   edge: [
     `C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe`,
   ],
   vscode: [
+    `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe`,
     `C:\\Users\\ADMIN\\Desktop\\Antigravity.lnk`,
     `C:\\Users\\ADMIN\\Desktop\\ZCode.lnk`,
-    `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe`,
     `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\ZCode\\ZCode.exe`,
   ],
   spotify: [
-    `spotify:`,
     `shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify`,
+    `spotify:`,
     `C:\\Users\\ADMIN\\AppData\\Local\\Microsoft\\WindowsApps\\Spotify.exe`,
   ],
   whatsapp: [
-    `whatsapp:`,
     `shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App`,
+    `whatsapp:`,
   ],
   instagram: [
+    `shell:AppsFolder\\Facebook.InstagramBeta_8xx8rvfyw5nnt!App`,
     `C:\\Users\\ADMIN\\Desktop\\Instagram.lnk`,
   ],
   canva: [
+    `shell:AppsFolder\\com.canva.CanvaDesktop`,
     `C:\\Users\\ADMIN\\Desktop\\Canva.lnk`,
     `C:\\Users\\ADMIN\\AppData\\Local\\Programs\\Canva\\Canva.exe`,
   ],
@@ -406,6 +466,28 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
   const hasOpenVerb = openVerbs.some((v) => lower.includes(v));
   const hasCloseVerb = closeVerbs.some((v) => lower.includes(v));
 
+  // 0. Enregistrer ou mettre à jour un contact WhatsApp
+  if (
+    (lower.includes('enregistre') || lower.includes('sauvegarde') || lower.includes('ajoute')) &&
+    (lower.includes('contact') || lower.includes('numéro') || lower.includes('numero'))
+  ) {
+    const phoneMatch = message.match(/(?:\+?[0-9]{8,15})/);
+    const cleanPhone = phoneMatch ? phoneMatch[0].replace(/[^0-9]/g, '') : '';
+    const nameMatch = message.match(/(?:de|du contact|le contact|nommé|nomme)\s+([a-zA-Z0-9_\-]+)/i);
+    const name = nameMatch ? nameMatch[1].trim() : '';
+
+    if (cleanPhone && name) {
+      const { saveContact } = await import('./db');
+      await saveContact(name, cleanPhone);
+      return {
+        executed: true,
+        actionNote: `Contact ${name} (+${cleanPhone}) enregistré dans le répertoire.`,
+        directReply: `C'est enregistré, Roysten. Le contact ${name} (+${cleanPhone}) est maintenant dans ton répertoire JARVIS.`,
+        isPureCommand: true,
+      };
+    }
+  }
+
   // 1. WhatsApp Action (Rédiger / Envoyer message)
   if (
     lower.includes('whatsapp') &&
@@ -417,7 +499,7 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     const cleanPhone = phoneMatch ? phoneMatch[0].replace(/[^0-9]/g, '') : '';
     const contactMatch = message.match(/(?:à|a|au|pour)\s+([a-zA-Z0-9_\-\+]+)/i);
     const rawContact = contactMatch ? contactMatch[1].trim() : '';
-    const contactName = cleanPhone || rawContact;
+    const targetContact = cleanPhone || rawContact || 'Roysten';
 
     let msgToSend = '';
     if (message.includes(':')) {
@@ -427,36 +509,31 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     } else if (lower.includes('pour lui dire')) {
       msgToSend = message.split(/pour lui dire(?:\s+que)?/i)[1]?.trim() || '';
     } else {
-      msgToSend = rawContact ? `Salut ${rawContact} ! Message rédigé depuis JARVIS.` : 'Bonjour ! Message envoyé depuis JARVIS Assistant.';
+      msgToSend = rawContact ? `Salut ${rawContact} ! Message envoyé depuis JARVIS.` : 'Bonjour !';
     }
 
     if (!msgToSend || msgToSend.length < 2) {
       msgToSend = rawContact ? `Salut ${rawContact} !` : 'Bonjour !';
     }
 
-    const hasPhone = cleanPhone && cleanPhone.length >= 8;
-    const waProtocolUrl = hasPhone
-      ? `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(msgToSend)}`
-      : `whatsapp://send?text=${encodeURIComponent(msgToSend)}`;
+    const result = await sendWhatsAppMessage(msgToSend, targetContact);
 
-    await sendWhatsAppMessage(msgToSend, hasPhone ? cleanPhone : contactName);
-    const target = hasPhone ? cleanPhone : (rawContact || 'votre contact');
-
-    const replyMsg = hasPhone
-      ? `C'est fait, Monsieur Roysten. WhatsApp est ouvert directement sur la conversation avec ${cleanPhone} avec votre message :\n\n« ${msgToSend} »\n\n📋 *Copié dans le presse-papier Windows. Appuyez sur Entrée dans WhatsApp pour envoyer.*`
-      : `C'est fait, Monsieur Roysten. WhatsApp Desktop est ouvert avec votre message pour ${target} :\n\n« ${msgToSend} »\n\n📋 *Copié dans le presse-papier Windows.*\n💡 *Pour ouvrir directement la discussion d'un contact précis, précisez son numéro (ex : « envoie un message au +229XXXXXXXX : salut »).*`;
-
-    return {
-      executed: true,
-      actionNote: `Message préparé dans WhatsApp Desktop pour ${target}.`,
-      directReply: replyMsg,
-      isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: waProtocolUrl,
-        label: 'Ouvrir WhatsApp',
-      },
-    };
+    if (result.success && result.phone) {
+      const recipient = result.contactName || result.phone;
+      return {
+        executed: true,
+        actionNote: `Message WhatsApp envoyé à ${recipient} (+${result.phone}).`,
+        directReply: `C'est envoyé, Roysten. Le message « ${msgToSend} » a été transmis à ${recipient} (+${result.phone}) sur WhatsApp.`,
+        isPureCommand: true,
+      };
+    } else {
+      return {
+        executed: true,
+        actionNote: `WhatsApp ouvert sur le bureau. Numéro non configuré pour ${targetContact}.`,
+        directReply: `WhatsApp est ouvert sur ton écran. Je n'ai pas encore le numéro de "${targetContact}" en mémoire. Dis-moi par exemple : « enregistre le numéro de ${targetContact} : +229... » pour que je puisse lui envoyer automatiquement à chaque fois !`,
+        isPureCommand: true,
+      };
+    }
   }
 
   // 2. WhatsApp Simple (Ouvrir / Fermer)
@@ -466,23 +543,17 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       return {
         executed: true,
         actionNote: 'WhatsApp a été fermé.',
-        directReply: 'WhatsApp a été fermé, Monsieur.',
+        directReply: 'WhatsApp a été fermé.',
         isPureCommand: true,
       };
     }
     if (hasOpenVerb || lower === 'whatsapp' || lower === 'ouvre whatsapp' || lower === 'allume whatsapp') {
       await launchApp('whatsapp');
-      const waProto = 'whatsapp://';
       return {
         executed: true,
-        actionNote: 'WhatsApp Desktop a été ouvert directement au premier plan sur votre écran.',
-        directReply: `WhatsApp Desktop est ouvert directement sur votre bureau Windows, Monsieur.\n\n👉 [💬 Activer WhatsApp](${waProto})`,
+        actionNote: 'WhatsApp Desktop a été ouvert.',
+        directReply: 'WhatsApp est lancé sur ton écran, Roysten.',
         isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: waProto,
-          label: 'Ouvrir WhatsApp',
-        },
       };
     }
   }
@@ -501,26 +572,20 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       return {
         executed: true,
         actionNote: 'Visual Studio Code a été fermé.',
-        directReply: 'Visual Studio Code a été fermé, Monsieur.',
+        directReply: 'Visual Studio Code a été fermé.',
         isPureCommand: true,
       };
     }
     await openVSCode();
-    const vsCodeProto = 'vscode://file/c:/Users/ADMIN/Documents/Jarvis';
     return {
       executed: true,
       actionNote: 'Visual Studio Code a été lancé au premier plan sur votre écran avec le projet Jarvis.',
-      directReply: `À vos ordres, Monsieur Roysten. Visual Studio Code est ouvert au premier plan sur votre écran avec le projet Jarvis.\n\n👉 [💻 Basculer sur VS Code](${vsCodeProto})`,
+      directReply: 'Visual Studio Code est ouvert au premier plan avec ton projet Jarvis.',
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: vsCodeProto,
-        label: 'Basculer sur VS Code',
-      },
     };
   }
 
-  // 4. Spotify & Musique (LANCEMENT NOUVEAU : Application native Windows UNIQUEMENT)
+  // 4. Spotify & Musique
   if (
     lower.includes('spotify') ||
     (hasOpenVerb && (lower.includes('musique') || lower.includes('chanson') || lower.includes('morceau') || lower.includes('lofi') || lower.includes('afrobeat') || lower.includes('son')))
@@ -530,7 +595,7 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       return {
         executed: true,
         actionNote: 'Spotify a été arrêté.',
-        directReply: 'Spotify a été arrêté, Monsieur.',
+        directReply: 'Spotify a été arrêté.',
         isPureCommand: true,
       };
     }
@@ -543,75 +608,83 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       }
     }
     await playSpotify(query);
-    const spotifyProto = query
-      ? `spotify:search:${encodeURIComponent(query)}`
-      : 'spotify:';
     return {
       executed: true,
       actionNote: query
         ? `L'application native Spotify a été activée avec recherche « ${query} ».`
         : `L'application native Spotify a été lancée sur votre écran Windows.`,
       directReply: query
-        ? `Tout de suite Monsieur. L'application native Spotify est activée sur votre PC avec « ${query} ».\n\n👉 [🎵 Activer Spotify](${spotifyProto})`
-        : `Très bien Monsieur Roysten, l'application native Spotify est lancée directement sur votre bureau.\n\n👉 [🎵 Activer Spotify](${spotifyProto})`,
+        ? `Spotify est lancé avec la recherche « ${query} ».`
+        : `Spotify est lancé sur ton bureau, Roysten.`,
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: spotifyProto,
-        label: 'Activer Spotify',
-      },
     };
   }
 
-  // 5. Canva (Application bureau ou web)
+  // 5. Canva (Application native Windows)
   if (lower.includes('canva')) {
     if (hasCloseVerb) {
       await closeApp('canva');
-      return { executed: true, actionNote: 'Canva a été fermé.', directReply: 'Canva a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'Canva a été fermé.', directReply: 'Canva a été fermé.', isPureCommand: true };
     }
     await launchApp('canva');
-    const canvaUrl = 'https://www.canva.com';
     return {
       executed: true,
-      actionNote: 'Canva a été ouvert sur votre écran.',
-      directReply: `Canva a été lancé sur votre écran, Monsieur.\n\n👉 [🎨 Accéder à Canva](${canvaUrl})`,
+      actionNote: 'Canva Desktop a été ouvert.',
+      directReply: 'Canva est lancé sur ton écran, Roysten.',
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: canvaUrl,
-        label: 'Ouvrir Canva',
-      },
     };
   }
 
-  // 6. CapCut (Application bureau ou web)
+  // 6. CapCut (Application bureau)
   if (lower.includes('capcut') || lower.includes('cap cut')) {
     if (hasCloseVerb) {
       await closeApp('capcut');
-      return { executed: true, actionNote: 'CapCut a été fermé.', directReply: 'CapCut a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'CapCut a été fermé.', directReply: 'CapCut a été fermé.', isPureCommand: true };
     }
     await launchApp('capcut');
-    const capcutUrl = 'https://www.capcut.com';
     return {
       executed: true,
-      actionNote: 'CapCut a été ouvert au premier plan sur votre écran.',
-      directReply: `CapCut est lancé au premier plan sur votre écran pour vos montages, Monsieur.\n\n👉 [🎬 Accéder à CapCut](${capcutUrl})`,
+      actionNote: 'CapCut a été ouvert au premier plan.',
+      directReply: 'CapCut est lancé au premier plan pour tes montages, Roysten.',
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: capcutUrl,
-        label: 'Ouvrir CapCut',
-      },
     };
   }
 
-  // === NOUVEAU MODULE : RÉSEAUX SOCIAUX & WEB AUTOMATION ===
+  // 7. Instagram (Application native Windows)
+  if (lower.includes('instagram') || lower === 'insta' || lower === 'ouvre insta' || lower === 'lance insta') {
+    if (hasCloseVerb) {
+      await closeApp('instagram');
+      return { executed: true, actionNote: 'Instagram a été fermé.', directReply: 'Instagram a été fermé.', isPureCommand: true };
+    }
+    if (
+      lower.includes('post') || lower.includes('légende') || lower.includes('legende') || lower.includes('caption') ||
+      lower.includes('photo') || lower.includes('publie') || lower.includes('reel')
+    ) {
+      const { generateSocialContent } = await import('@/lib/social-controller');
+      const topic = message.replace(/.*(?:instagram|post|légende|legende|caption|photo)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Création digitale et lifestyle développeur';
+      const result = await generateSocialContent('instagram', 'post', topic);
+      await launchApp('instagram');
+      return {
+        executed: true,
+        actionNote: `Légende Instagram rédigée et copiée dans le presse-papier Windows.`,
+        directReply: `Voici ta légende Instagram :\n\n${result.content}\n\n📋 **Copié dans ton presse-papier Windows.** L'application Instagram est ouverte, fais simplement **Ctrl + V** pour coller !`,
+        isPureCommand: true,
+      };
+    }
+    await launchApp('instagram');
+    return {
+      executed: true,
+      actionNote: 'Instagram a été lancé sur votre ordinateur.',
+      directReply: `L'application Instagram est ouverte sur ton écran, Roysten.`,
+      isPureCommand: true,
+    };
+  }
 
-  // A. Facebook (Post, Commentaire ou Simple Ouverture)
+  // 8. Facebook (Post, Commentaire ou Ouverture)
   if (lower.includes('facebook') || lower === 'fb' || lower === 'ouvre fb') {
     if (hasCloseVerb) {
       await closeApp('facebook');
-      return { executed: true, actionNote: 'Facebook a été fermé.', directReply: 'Facebook a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'Facebook a été fermé.', directReply: 'Facebook a été fermé.', isPureCommand: true };
     }
     if (
       lower.includes('post') || lower.includes('poste') || lower.includes('publie') || lower.includes('statut') ||
@@ -621,41 +694,31 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       const { generateSocialContent } = await import('@/lib/social-controller');
       const topic = message.replace(/.*(?:facebook|post|poste|publie|commente|statut)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Tech et Intelligence Artificielle au Bénin';
       const result = await generateSocialContent('facebook', isComment ? 'comment' : 'post', topic);
+      await openUrl('https://www.facebook.com');
       return {
         executed: true,
         actionNote: `Publication Facebook rédigée et copiée dans le presse-papier Windows.`,
-        directReply: `Monsieur Roysten, voici votre publication Facebook rédigée avec soin :\n\n${result.content}\n\n📋 **Le texte a été copié automatiquement dans votre presse-papier Windows.**\n👉 Ouvrez Facebook et collez (**Ctrl + V**) pour publier !\n\n👉 [🌐 Ouvrir Facebook](${result.actionUrl})`,
+        directReply: `Voici ta publication Facebook :\n\n${result.content}\n\n📋 **Copié dans ton presse-papier Windows.** Facebook est ouvert dans ton navigateur, fais **Ctrl + V** pour publier !`,
         isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: result.actionUrl,
-          label: 'Ouvrir Facebook',
-        },
       };
     }
-    const fbUrl = 'https://www.facebook.com';
-    await openUrl(fbUrl);
+    await openUrl('https://www.facebook.com');
     return {
       executed: true,
       actionNote: 'Facebook a été ouvert dans votre navigateur.',
-      directReply: `Facebook est ouvert, Monsieur Roysten.\n\n👉 [🌐 Ouvrir Facebook](${fbUrl})`,
+      directReply: `Facebook est ouvert, Roysten.`,
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: fbUrl,
-        label: 'Ouvrir Facebook',
-      },
     };
   }
 
-  // B. Twitter / X (Tweet, Réponse ou Simple Ouverture)
+  // 9. Twitter / X (Tweet, Réponse ou Ouverture)
   if (
     lower.includes('twitter') || lower.includes('tweet') ||
     lower === 'x' || lower === 'ouvre x' || lower === 'lance x' || lower.includes('sur x') || lower.includes('sur twitter')
   ) {
     if (hasCloseVerb) {
       await closeApp('twitter');
-      return { executed: true, actionNote: 'Twitter a été fermé.', directReply: 'Twitter a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'Twitter a été fermé.', directReply: 'Twitter a été fermé.', isPureCommand: true };
     }
     if (
       lower.includes('post') || lower.includes('tweet') || lower.includes('écris') || lower.includes('ecris') ||
@@ -665,38 +728,28 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       const { generateSocialContent } = await import('@/lib/social-controller');
       const topic = message.replace(/.*(?:twitter|tweet|sur x|sur twitter|post|poste|publie|commente)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Vibe coding et intelligence artificielle';
       const result = await generateSocialContent('twitter', isComment ? 'comment' : 'post', topic);
+      await openUrl(result.actionUrl);
       return {
         executed: true,
         actionNote: `Tweet rédigé et interface de publication X (Twitter) ouverte avec le texte prérempli.`,
-        directReply: `Voici le tweet rédigé pour vous, Monsieur Roysten :\n\n« ${result.content} »\n\n🚀 **La fenêtre X (Twitter) est prête avec votre tweet déjà inscrit !**\n\n👉 [🐦 Publier sur X (Twitter)](${result.actionUrl})`,
+        directReply: `Voici ton tweet prêt à être envoyé :\n\n« ${result.content} »\n\n🚀 La fenêtre X (Twitter) est ouverte avec ton tweet déjà prérempli.`,
         isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: result.actionUrl,
-          label: 'Publier sur X',
-        },
       };
     }
-    const xUrl = 'https://x.com';
-    await openUrl(xUrl);
+    await openUrl('https://x.com');
     return {
       executed: true,
       actionNote: 'X (Twitter) a été ouvert.',
-      directReply: `X (Twitter) est ouvert, Monsieur Roysten.\n\n👉 [🐦 Ouvrir X (Twitter)](${xUrl})`,
+      directReply: `X (Twitter) est ouvert, Roysten.`,
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: xUrl,
-        label: 'Ouvrir X (Twitter)',
-      },
     };
   }
 
-  // C. LinkedIn (Post, Commentaire ou Simple Ouverture)
+  // 10. LinkedIn (Post, Commentaire ou Ouverture)
   if (lower.includes('linkedin')) {
     if (hasCloseVerb) {
       await closeApp('linkedin');
-      return { executed: true, actionNote: 'LinkedIn a été fermé.', directReply: 'LinkedIn a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'LinkedIn a été fermé.', directReply: 'LinkedIn a été fermé.', isPureCommand: true };
     }
     if (
       lower.includes('post') || lower.includes('poste') || lower.includes('écris') || lower.includes('ecris') ||
@@ -706,74 +759,24 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
       const { generateSocialContent } = await import('@/lib/social-controller');
       const topic = message.replace(/.*(?:linkedin|post|poste|publie|commente)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Retour d\'expérience tech, études et vibe coding';
       const result = await generateSocialContent('linkedin', isComment ? 'comment' : 'post', topic);
+      await openUrl('https://www.linkedin.com/feed/');
       return {
         executed: true,
         actionNote: `Publication LinkedIn rédigée et copiée dans le presse-papier Windows.`,
-        directReply: `Monsieur Roysten, voici votre publication LinkedIn professionnelle :\n\n${result.content}\n\n📋 **Le texte a été copié dans votre presse-papier Windows.**\n👉 LinkedIn est ouvert au premier plan, collez (**Ctrl + V**) pour publier !\n\n👉 [💼 Accéder à LinkedIn](${result.actionUrl})`,
+        directReply: `Voici ton post LinkedIn :\n\n${result.content}\n\n📋 **Copié dans ton presse-papier Windows.** LinkedIn est ouvert, fais **Ctrl + V** pour publier !`,
         isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: result.actionUrl,
-          label: 'Ouvrir LinkedIn',
-        },
       };
     }
-    const inUrl = 'https://www.linkedin.com';
-    await openUrl(inUrl);
+    await openUrl('https://www.linkedin.com');
     return {
       executed: true,
       actionNote: 'LinkedIn a été ouvert.',
-      directReply: `LinkedIn est ouvert, Monsieur Roysten.\n\n👉 [💼 Ouvrir LinkedIn](${inUrl})`,
+      directReply: `LinkedIn est ouvert, Roysten.`,
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: inUrl,
-        label: 'Ouvrir LinkedIn',
-      },
     };
   }
 
-  // D. Instagram (Légende, Post, ou Simple Lancement)
-  if (lower.includes('instagram') || lower === 'insta' || lower === 'ouvre insta' || lower === 'lance insta') {
-    if (hasCloseVerb) {
-      await closeApp('instagram');
-      return { executed: true, actionNote: 'Instagram a été fermé.', directReply: 'Instagram a été fermé, Monsieur.', isPureCommand: true };
-    }
-    if (
-      lower.includes('post') || lower.includes('légende') || lower.includes('legende') || lower.includes('caption') ||
-      lower.includes('photo') || lower.includes('publie') || lower.includes('reel')
-    ) {
-      const { generateSocialContent } = await import('@/lib/social-controller');
-      const topic = message.replace(/.*(?:instagram|post|légende|legende|caption|photo)(?:\s+sur|\s+de|\s+pour|\s*:)?/i, '').trim() || 'Création digitale et lifestyle développeur';
-      const result = await generateSocialContent('instagram', 'post', topic);
-      return {
-        executed: true,
-        actionNote: `Légende Instagram rédigée et copiée dans le presse-papier Windows.`,
-        directReply: `Voici votre légende Instagram optimisée, Monsieur Roysten :\n\n${result.content}\n\n📋 **Copiée dans votre presse-papier.**\n\n👉 [📸 Ouvrir Instagram](${result.actionUrl})`,
-        isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: result.actionUrl,
-          label: 'Ouvrir Instagram',
-        },
-      };
-    }
-    await launchApp('instagram');
-    const instaUrl = 'https://www.instagram.com';
-    return {
-      executed: true,
-      actionNote: 'Instagram a été lancé sur votre ordinateur.',
-      directReply: `L'application Instagram a été lancée sur votre ordinateur, Monsieur Roysten.\n\n👉 [📸 Ouvrir Instagram](${instaUrl})`,
-      isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: instaUrl,
-        label: 'Ouvrir Instagram',
-      },
-    };
-  }
-
-  // E. Navigation Web Directe (navigue sur..., va sur..., ouvre le site...)
+  // 11. Navigation Web Directe (navigue sur..., va sur..., ouvre le site...)
   if (
     lower.startsWith('navigue sur') ||
     lower.startsWith('va sur') ||
@@ -798,27 +801,22 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
     return {
       executed: true,
       actionNote: `Navigation vers ${targetUrl} dans le navigateur.`,
-      directReply: `Navigation en cours vers ${targetUrl}, Monsieur Roysten.\n\n👉 [🌐 Ouvrir le site](${targetUrl})`,
+      directReply: `Navigation en cours vers ${targetUrl}, Roysten.`,
       isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: targetUrl,
-        label: 'Accéder au site',
-      },
     };
   }
 
-  // 7. Suite Office (Word, Excel, PowerPoint)
+  // 12. Suite Office (Word, Excel, PowerPoint)
   if (lower.includes('word') || lower.includes('winword') || lower.includes('traitement de texte')) {
     if (hasCloseVerb) {
       await closeApp('word');
-      return { executed: true, actionNote: 'Word a été fermé.', directReply: 'Microsoft Word a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'Word a été fermé.', directReply: 'Microsoft Word a été fermé.', isPureCommand: true };
     }
     await launchApp('word');
     return {
       executed: true,
       actionNote: 'Microsoft Word a été ouvert au premier plan sur votre écran.',
-      directReply: 'Microsoft Word est ouvert au premier plan sur votre écran, Monsieur.',
+      directReply: 'Microsoft Word est ouvert sur ton écran, Roysten.',
       isPureCommand: true,
     };
   }
@@ -826,13 +824,13 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
   if (lower.includes('excel') || lower.includes('tableur')) {
     if (hasCloseVerb) {
       await closeApp('excel');
-      return { executed: true, actionNote: 'Excel a été fermé.', directReply: 'Microsoft Excel a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'Excel a été fermé.', directReply: 'Microsoft Excel a été fermé.', isPureCommand: true };
     }
     await launchApp('excel');
     return {
       executed: true,
       actionNote: 'Microsoft Excel a été ouvert au premier plan sur votre écran.',
-      directReply: 'Microsoft Excel est ouvert au premier plan sur votre écran, Monsieur.',
+      directReply: 'Microsoft Excel est ouvert sur ton écran, Roysten.',
       isPureCommand: true,
     };
   }
@@ -840,50 +838,37 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
   if (lower.includes('powerpoint') || lower.includes('power point') || lower.includes('diaporama') || lower.includes('slide')) {
     if (hasCloseVerb) {
       await closeApp('powerpoint');
-      return { executed: true, actionNote: 'PowerPoint a été fermé.', directReply: 'PowerPoint a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'PowerPoint a été fermé.', directReply: 'PowerPoint a été fermé.', isPureCommand: true };
     }
     await launchApp('powerpoint');
     return {
       executed: true,
       actionNote: 'Microsoft PowerPoint a été ouvert au premier plan sur votre écran.',
-      directReply: 'Microsoft PowerPoint est ouvert au premier plan sur votre écran, Monsieur.',
+      directReply: 'Microsoft PowerPoint est ouvert sur ton écran, Roysten.',
       isPureCommand: true,
     };
   }
 
-  // 8. YouTube & Google Search
+  // 13. YouTube & Google Search
   if (lower.includes('youtube')) {
     const match = message.match(/cherche\s+(.*?)\s+sur\s+youtube/i) || message.match(/sur\s+youtube\s+(.*)/i);
     const query = match ? match[1].trim() : '';
-    const ytUrl = query
-      ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
-      : 'https://youtube.com';
     if (query) {
       await searchYouTube(query);
       return {
         executed: true,
         actionNote: `YouTube a été ouvert avec la recherche : "${query}".`,
-        directReply: `J'ai ouvert YouTube avec votre recherche « ${query} », Monsieur.\n\n👉 [▶️ Regarder sur YouTube](${ytUrl})`,
+        directReply: `YouTube est ouvert avec ta recherche « ${query} », Roysten.`,
         isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: ytUrl,
-          label: 'Ouvrir YouTube',
-        },
       };
     }
     if (hasOpenVerb || lower === 'youtube') {
       await openUrl('https://youtube.com');
       return {
         executed: true,
-        actionNote: 'YouTube a été ouvert dans votre navigateur.',
-        directReply: `YouTube est ouvert dans votre navigateur, Monsieur.\n\n👉 [▶️ Accéder à YouTube](${ytUrl})`,
+        actionNote: 'YouTube a été ouvert dans le navigateur.',
+        directReply: 'YouTube est ouvert, Roysten.',
         isPureCommand: true,
-        clientAction: {
-          type: 'open_url',
-          url: ytUrl,
-          label: 'Ouvrir YouTube',
-        },
       };
     }
   }
@@ -891,56 +876,50 @@ export async function executeSystemCommand(rawMessage: string): Promise<SystemCo
   if (lower.includes('google') && (lower.includes('cherche') || lower.includes('trouve'))) {
     const match = message.match(/cherche\s+(.*?)\s+sur\s+google/i);
     const query = match ? match[1].trim() : '';
-    const gUrl = query
-      ? `https://www.google.com/search?q=${encodeURIComponent(query)}`
-      : 'https://google.com';
-    await searchGoogle(query);
-    return {
-      executed: true,
-      actionNote: `Google a été ouvert avec la recherche : "${query}".`,
-      directReply: `Google Chrome est ouvert avec votre recherche « ${query} », Monsieur.\n\n👉 [🔍 Voir sur Google](${gUrl})`,
-      isPureCommand: true,
-      clientAction: {
-        type: 'open_url',
-        url: gUrl,
-        label: 'Ouvrir Google',
-      },
-    };
+    if (query) {
+      await searchGoogle(query);
+      return {
+        executed: true,
+        actionNote: `Google a été ouvert avec la recherche : "${query}".`,
+        directReply: `Google est ouvert avec ta recherche « ${query} », Roysten.`,
+        isPureCommand: true,
+      };
+    }
   }
 
-  // 9. Chrome / Navigateur
+  // 14. Chrome / Navigateur
   if (lower.includes('chrome') || (hasOpenVerb && (lower.includes('navigateur') || lower.includes('internet')))) {
     if (hasCloseVerb) {
       await closeApp('chrome');
-      return { executed: true, actionNote: 'Google Chrome a été fermé.', directReply: 'Google Chrome a été fermé, Monsieur.', isPureCommand: true };
+      return { executed: true, actionNote: 'Google Chrome a été fermé.', directReply: 'Google Chrome a été fermé.', isPureCommand: true };
     }
     await launchApp('chrome');
     return {
       executed: true,
       actionNote: 'Google Chrome a été lancé au premier plan.',
-      directReply: 'Google Chrome est ouvert au premier plan, Monsieur.',
+      directReply: 'Google Chrome est ouvert, Roysten.',
       isPureCommand: true,
     };
   }
 
-  // 10. Explorateur de fichiers
+  // 15. Explorateur de fichiers
   if (lower.includes('explorateur') || lower.includes('mes documents') || lower.includes('dossier')) {
     await launchApp('explorer');
     return {
       executed: true,
       actionNote: "L'explorateur de fichiers a été ouvert.",
-      directReply: "L'explorateur de fichiers est ouvert, Monsieur.",
+      directReply: "L'explorateur de fichiers est ouvert, Roysten.",
       isPureCommand: true,
     };
   }
 
-  // 11. Terminal
+  // 16. Terminal
   if (lower.includes('terminal') || lower.includes('powershell') || lower.includes('console')) {
     await launchApp('terminal');
     return {
       executed: true,
       actionNote: 'Le terminal PowerShell a été ouvert sur votre écran.',
-      directReply: 'Le terminal PowerShell est ouvert sur votre écran, Monsieur.',
+      directReply: 'Le terminal PowerShell est ouvert sur ton écran, Roysten.',
       isPureCommand: true,
     };
   }

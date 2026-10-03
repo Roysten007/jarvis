@@ -314,3 +314,58 @@ export async function updateTaskStatus(id: string, status: string) {
   saveLocalStore(store);
   return { success: true };
 }
+
+export interface Contact {
+  name: string;
+  phone: string;
+  created_at?: string;
+}
+
+export async function getContacts(): Promise<Contact[]> {
+  const store = getLocalStore();
+  const list: Contact[] = (store as any).contacts || [];
+  if (!list.some((c) => c.name.toLowerCase() === 'roysten')) {
+    list.push({ name: 'Roysten', phone: '22997123456' });
+  }
+  return list;
+}
+
+export async function saveContact(name: string, phone: string): Promise<Contact> {
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const cleanName = name.trim();
+  const store = getLocalStore();
+  if (!(store as any).contacts) (store as any).contacts = [];
+  const existing = (store as any).contacts.find(
+    (c: any) => c.name.toLowerCase() === cleanName.toLowerCase()
+  );
+  if (existing) {
+    existing.phone = cleanPhone;
+    saveLocalStore(store);
+    return existing;
+  }
+  const item: Contact = { name: cleanName, phone: cleanPhone, created_at: new Date().toISOString() };
+  (store as any).contacts.push(item);
+  saveLocalStore(store);
+  return item;
+}
+
+export async function resolveContactPhone(
+  nameOrPhone: string
+): Promise<{ name: string; phone: string } | null> {
+  const clean = nameOrPhone.trim();
+  const directDigits = clean.replace(/[^0-9]/g, '');
+  if (directDigits.length >= 8) {
+    return { name: clean, phone: directDigits };
+  }
+  const lower = clean.toLowerCase();
+  if (lower === 'roysten' || lower === 'moi' || lower === 'seweto' || lower === 'michel') {
+    return { name: 'Roysten', phone: '22997123456' };
+  }
+  const contacts = await getContacts();
+  const found = contacts.find(
+    (c) => c.name.toLowerCase() === lower || lower.includes(c.name.toLowerCase())
+  );
+  if (found) return found;
+  return null;
+}
+
