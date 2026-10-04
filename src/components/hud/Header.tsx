@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Cpu, Clock, Mic, Sparkles, Activity, Pin, Monitor } from 'lucide-react';
+import { ShieldCheck, Cpu, Clock, Mic, Sparkles, Activity, Pin, Monitor, Lock, Volume2 } from 'lucide-react';
 import { JARVIS_CONFIG } from '@/lib/config';
 
 import { ArcReactorWake } from './ArcReactorWake';
@@ -16,6 +16,10 @@ interface HeaderProps {
   isVoiceInputActive?: boolean;
   isAwake?: boolean;
   onAwakeChange?: (awake: boolean) => void;
+  isLocked?: boolean;
+  onLock?: () => void;
+  isClapEnabled?: boolean;
+  onToggleClap?: () => void;
 }
 
 export function Header({
@@ -28,6 +32,10 @@ export function Header({
   isVoiceInputActive = false,
   isAwake = false,
   onAwakeChange,
+  isLocked = false,
+  onLock,
+  isClapEnabled = true,
+  onToggleClap,
 }: HeaderProps) {
   const [time, setTime] = useState<string>('');
   const [isDesktop, setIsDesktop] = useState<boolean>(false);
@@ -156,6 +164,34 @@ export function Header({
               <span className="text-[9px] text-slate-500 ml-1">Ctrl+Shift+J</span>
             </div>
           </div>
+        )}
+
+        {/* Bouton Réveil Double-Claque */}
+        {onToggleClap && (
+          <button
+            onClick={onToggleClap}
+            title={isClapEnabled ? 'Réveil par double-claque : ACTIF (Tapez 2 fois dans les mains)' : 'Activer le réveil par double-claque'}
+            className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded text-[10px] border transition-all ${
+              isClapEnabled
+                ? 'bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-300'
+            }`}
+          >
+            <span>👏</span>
+            <span className="font-semibold">{isClapEnabled ? 'CLAP WAKE: ON' : 'CLAP: OFF'}</span>
+          </button>
+        )}
+
+        {/* Bouton Verrouiller JARVIS (Sécurité Biométrique / PIN) */}
+        {onLock && (
+          <button
+            onClick={onLock}
+            title="Verrouiller JARVIS (Sécurité Stark Biométrique & Code PIN)"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] border border-cyan-500/30 bg-slate-900/80 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 transition-all shadow-sm"
+          >
+            <Lock className="w-3 h-3 text-cyan-400" />
+            <span className="hidden md:inline">VERROUILLER</span>
+          </button>
         )}
 
         <div className="flex items-center gap-1.5 text-cyan-300 bg-cyan-950/30 border border-cyan-500/20 px-2.5 py-1 rounded">

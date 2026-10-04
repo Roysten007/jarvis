@@ -16,6 +16,8 @@ import { TasksView } from '@/components/views/TasksView';
 import { SettingsView } from '@/components/views/SettingsView';
 import { JARVIS_CONFIG } from '@/lib/config';
 import { playHudReceive } from '@/lib/audio-effects';
+import { DoubleClapDetector } from '@/lib/clap-detector';
+import { StarkSecurityLock } from '@/components/security/StarkSecurityLock';
 
 export default function JarvisDashboard() {
   const [activeTab, setActiveTab] = useState<NavTab>('chat');
@@ -26,25 +28,71 @@ export default function JarvisDashboard() {
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [streamChunkToSpeak, setStreamChunkToSpeak] = useState<string>('');
 
+  // États de sécurité Stark Industries
+  const [isLocked, setIsLocked] = useState<boolean>(true);
+
   // États vocaux unifiés pour synchroniser HUD, micro et réacteurs
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
   const [isVoiceListening, setIsVoiceListening] = useState<boolean>(false);
   const [isAwake, setIsAwake] = useState<boolean>(false);
   const [voiceAudioEnabled, setVoiceAudioEnabled] = useState<boolean>(true);
+  const [isClapWakeEnabled, setIsClapWakeEnabled] = useState<boolean>(true);
 
   const speechSentenceBufferRef = useRef<string>('');
   const stopSpeakingRef = useRef<(() => void) | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const spokenSentencesCountRef = useRef<number>(0);
   const isSpeechCancelledRef = useRef<boolean>(false);
+  const clapDetectorRef = useRef<DoubleClapDetector | null>(null);
 
-  // Charger la préférence audio
+  // Charger les préférences de sécurité et audio
   useEffect(() => {
-    const saved = localStorage.getItem('jarvis_voice_audio_enabled');
-    if (saved !== null) {
-      setVoiceAudioEnabled(saved === 'true');
+    const savedAudio = localStorage.getItem('jarvis_voice_audio_enabled');
+    if (savedAudio !== null) {
+      setVoiceAudioEnabled(savedAudio === 'true');
     }
+
+    const savedClap = localStorage.getItem('jarvis_clap_wake_enabled');
+    const clapEnabled = savedClap === null ? true : savedClap === 'true';
+    setIsClapWakeEnabled(clapEnabled);
+
+    const savedSecurity = localStorage.getItem('jarvis_security_enabled');
+    // Verrouillé au démarrage sauf si explicitement désactivé
+    if (savedSecurity === 'false') {
+      setIsLocked(false);
+    } else {
+      setIsLocked(true);
+    }
+
+    // Initialisation du détecteur de double-claque
+    const detector = new DoubleClapDetector({
+      enabled: clapEnabled,
+      onDoubleClap: () => {
+        console.log('[JARVIS] 👏 RÉVEIL PAR DOUBLE-CLAQUE !');
+        setIsAwake(true);
+        setStreamChunkToSpeak('À vos ordres Monsieur Roysten, je vous écoute.');
+        setIsVoiceListening(true);
+      },
+    });
+
+    if (clapEnabled) {
+      detector.start().catch(() => {});
+    }
+    clapDetectorRef.current = detector;
+
+    return () => {
+      detector.stop();
+    };
   }, []);
+
+  const handleToggleClapWake = () => {
+    const next = !isClapWakeEnabled;
+    setIsClapWakeEnabled(next);
+    localStorage.setItem('jarvis_clap_wake_enabled', String(next));
+    if (clapDetectorRef.current) {
+      clapDetectorRef.current.setEnabled(next);
+    }
+  };
 
   const handleToggleVoiceAudio = () => {
     const next = !voiceAudioEnabled;
@@ -91,12 +139,11 @@ export default function JarvisDashboard() {
     }
   }, [handleStopGeneration, voiceAudioEnabled]);
 
-  // Découpage et envoi au TTS en flux : maximum 2 phrases concises par réponse
-  const feedSpeechBuffer = (delta: string, isVoiceTurn: boolean) => {
+  // Découpage et envoi au TTS en flux : 1 phrase concise et percutante par réponse
+  const feedSpeechBuffer = (delta: string) => {
     if (isSpeechCancelledRef.current) return;
-    // Ne parler à voix haute QUE si l'utilisateur a parlé au micro ET que l'audio est activé
-    // Cela empêche totalement la voix de parler quand on écrit du texte au clavier !
-    if (!isVoiceTurn || !voiceAudioEnabled) return;
+    // Parler si l'audio est activé
+    if (!voiceAudioEnabled) return;
     if (spokenSentencesCountRef.current >= 1) return;
 
     speechSentenceBufferRef.current += delta;
@@ -192,7 +239,7 @@ export default function JarvisDashboard() {
                 if (parsed.content) {
                   accumulated += parsed.content;
                   setStreamingContent((prev) => prev + parsed.content);
-                  feedSpeechBuffer(parsed.content, isVoice);
+                  feedSpeechBuffer(parsed.content);
                 }
                 if (parsed.clientAction) {
                   receivedClientAction = parsed.clientAction;
@@ -224,12 +271,11 @@ export default function JarvisDashboard() {
         }
       }
 
-      // Vider le reste du buffer vocal s'il restait une phrase sans point final (uniquement en vocal)
+      // Vider le reste du buffer vocal s'il restait une phrase sans point final
       if (
         speechSentenceBufferRef.current.trim() &&
         !isSpeechCancelledRef.current &&
         voiceAudioEnabled &&
-        isVoice &&
         spokenSentencesCountRef.current < 1
       ) {
         const remaining = speechSentenceBufferRef.current.trim();
@@ -304,6 +350,13 @@ export default function JarvisDashboard() {
 
   return (
     <div className="flex flex-col h-[100dvh] min-h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#030712] hud-scanline">
+      {/* Écran de Sécurité Biométrique / PIN Stark Industries */}
+      <StarkSecurityLock
+        isLocked={isLocked}
+        onUnlock={() => setIsLocked(false)}
+        onVoiceAnnounce={(text) => setStreamChunkToSpeak(text)}
+      />
+
       {/* HUD Header avec Réacteur Maître */}
       <Header
         currentModel={currentModel}
@@ -315,6 +368,10 @@ export default function JarvisDashboard() {
         isVoiceInputActive={isVoiceListening}
         isAwake={isAwake}
         onAwakeChange={setIsAwake}
+        isLocked={isLocked}
+        onLock={() => setIsLocked(true)}
+        isClapEnabled={isClapWakeEnabled}
+        onToggleClap={handleToggleClapWake}
       />
 
       {/* Main Layout */}

@@ -13,14 +13,47 @@ import pino from 'pino';
 import qrcodeTerminal from 'qrcode-terminal';
 import QRCode from 'qrcode';
 
+import { createClient } from '@supabase/supabase-js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function loadEnvLocal() {
+  const envPath = path.join(process.cwd(), '.env.local');
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const idx = trimmed.indexOf('=');
+      if (idx > 0) {
+        const key = trimmed.slice(0, idx).trim();
+        const val = trimmed.slice(idx + 1).trim();
+        if (!process.env[key]) process.env[key] = val;
+      }
+    }
+  }
+}
+
+loadEnvLocal();
 
 const PORT = process.env.PORT || 3001;
 const AUTH_DIR = path.join(process.cwd(), '.data', 'baileys_auth');
 
 if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
+}
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ugbinrddnhhbjnlhegcu.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_KEY) {
+  try {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } });
+    console.log('[JARVIS-WA] ☁️ Client Supabase Cloud activé pour la synchronisation automatique');
+  } catch (e) {
+    console.error('[JARVIS-WA] Erreur init Supabase:', e.message);
+  }
 }
 
 let sock = null;
@@ -30,6 +63,110 @@ let isConnected = false;
 let userInfo = null;
 let lastPairingCode = null;
 let isStarting = false;
+let queueInterval = null;
+let isProcessingQueue = false;
+
+export async function sendBaileysMessage(phone, messageText) {
+  if (!isConnected || !sock) {
+    throw new Error("La passerelle WhatsApp n'est pas encore connectée. Veuillez vous associer sur http://localhost:3001");
+  }
+
+  let cleanPhone = String(phone).replace(/[^0-9]/g, '');
+  if (cleanPhone.length === 8) cleanPhone = '229' + cleanPhone;
+  else if (cleanPhone.length === 10 && cleanPhone.startsWith('01')) cleanPhone = '229' + cleanPhone;
+
+  let targetJid = `${cleanPhone}@s.whatsapp.net`;
+
+  // Vérification et sélection du JID officiel
+  try {
+    const checks = await sock.onWhatsApp(cleanPhone);
+    if (checks && checks.length > 0 && checks[0].exists) {
+      targetJid = checks[0].jid;
+    } else if (cleanPhone.startsWith('22901') && cleanPhone.length === 13) {
+      const alt = '229' + cleanPhone.slice(5);
+      const altChecks = await sock.onWhatsApp(alt);
+      if (altChecks && altChecks.length > 0 && altChecks[0].exists) {
+        targetJid = altChecks[0].jid;
+      }
+    } else if (cleanPhone.startsWith('229') && cleanPhone.length === 11) {
+      const alt = '22901' + cleanPhone.slice(3);
+      const altChecks = await sock.onWhatsApp(alt);
+      if (altChecks && altChecks.length > 0 && altChecks[0].exists) {
+        targetJid = altChecks[0].jid;
+      }
+    }
+  } catch (e) {
+    // Garde targetJid par défaut
+  }
+
+  console.log(`[JARVIS-WA] 🚀 Envoi en arrière-plan vers ${targetJid} (${cleanPhone})...`);
+  const result = await sock.sendMessage(targetJid, { text: messageText.trim() });
+  console.log(`[JARVIS-WA] ✅ Message expédié avec succès vers ${cleanPhone} (ID: ${result?.key?.id})`);
+  return {
+    success: true,
+    messageId: result?.key?.id,
+    to: cleanPhone,
+    targetJid,
+  };
+}
+
+function startSupabaseQueuePolling() {
+  if (queueInterval) clearInterval(queueInterval);
+  if (!supabase) return;
+
+  console.log('[JARVIS-WA] 🔄 Écoute de la file d\'attente Cloud Supabase active (Vercel & Mobile)');
+
+  queueInterval = setInterval(async () => {
+    if (!isConnected || !sock || isProcessingQueue) return;
+    isProcessingQueue = true;
+
+    try {
+      const { data: tasks, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('title', 'WHATSAPP_DISPATCH')
+        .eq('status', 'todo')
+        .order('created_at', { ascending: true })
+        .limit(3);
+
+      if (!error && tasks && tasks.length > 0) {
+        for (const task of tasks) {
+          try {
+            await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id);
+            const payload = typeof task.description === 'string' ? JSON.parse(task.description) : task.description;
+            const { phone, message, contactName } = payload;
+
+            if (!phone || !message) {
+              await supabase.from('tasks').update({ status: 'cancelled' }).eq('id', task.id);
+              continue;
+            }
+
+            console.log(`[JARVIS-WA] 📥 Ordre Cloud reçu pour ${contactName || phone} (+${phone}) : « ${message} »`);
+            const res = await sendBaileysMessage(phone, message);
+
+            await supabase.from('tasks').update({
+              status: 'completed',
+              description: JSON.stringify({
+                ...payload,
+                messageId: res.messageId,
+                sent_at: new Date().toISOString(),
+              }),
+            }).eq('id', task.id);
+
+            console.log(`[JARVIS-WA] 🎯 Tâche Cloud ${task.id} expédiée avec succès vers ${phone}.`);
+          } catch (tErr) {
+            console.error(`[JARVIS-WA] ❌ Échec tâche Cloud ${task.id}:`, tErr.message);
+            await supabase.from('tasks').update({ status: 'todo' }).eq('id', task.id);
+          }
+        }
+      }
+    } catch (e) {
+      // Ignorer
+    } finally {
+      isProcessingQueue = false;
+    }
+  }, 2000);
+}
 
 async function startWhatsAppGateway() {
   if (isStarting) return;
@@ -127,6 +264,8 @@ async function startWhatsAppGateway() {
         console.log(`Identifiant : ${sock.user?.id || 'Actif'}`);
         console.log('Toutes les requêtes de messages seront exécutées en tâche de fond.');
         console.log('=================================================\n');
+
+        startSupabaseQueuePolling();
       }
     });
   } catch (err) {
@@ -531,23 +670,15 @@ const server = http.createServer(async (req, res) => {
           return res.end(JSON.stringify({ success: false, error: 'Champs phone et message requis' }));
         }
 
-        let cleanPhone = String(phone).replace(/[^0-9]/g, '');
-        if (cleanPhone.length === 8) cleanPhone = '229' + cleanPhone;
-        else if (cleanPhone.length === 10 && cleanPhone.startsWith('01')) cleanPhone = '229' + cleanPhone;
-
-        const jid = `${cleanPhone}@s.whatsapp.net`;
-
-        console.log(`[JARVIS-WA] Envoi autonome vers ${jid}...`);
-        const result = await sock.sendMessage(jid, { text: message.trim() });
-
-        console.log(`[JARVIS-WA] ✅ Message expédié avec succès vers ${cleanPhone} (ID: ${result.key.id})`);
+        const resData = await sendBaileysMessage(phone, message);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(
           JSON.stringify({
             success: true,
-            messageId: result.key.id,
-            to: cleanPhone,
+            messageId: resData.messageId,
+            to: resData.to,
+            targetJid: resData.targetJid,
             message: message.trim(),
             timestamp: new Date().toISOString(),
           })

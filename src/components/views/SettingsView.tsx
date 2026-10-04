@@ -15,6 +15,44 @@ export function SettingsView({ currentModel, onModelChange }: SettingsViewProps)
   const [resetConfirm, setResetConfirm] = useState('');
   const [isResetting, setIsResetting] = useState(false);
 
+  // Sécurité et Réveil Double-Claque
+  const [securityEnabled, setSecurityEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('jarvis_security_enabled') !== 'false';
+  });
+  const [pinCode, setPinCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return '0007';
+    return localStorage.getItem('jarvis_security_pin') || '0007';
+  });
+  const [savedPin, setSavedPin] = useState<boolean>(false);
+
+  const [clapEnabled, setClapEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('jarvis_clap_wake_enabled') !== 'false';
+  });
+
+  const handleToggleSecurity = () => {
+    const next = !securityEnabled;
+    setSecurityEnabled(next);
+    localStorage.setItem('jarvis_security_enabled', String(next));
+  };
+
+  const handleSavePin = () => {
+    if (pinCode.length < 4) {
+      alert('Le code PIN doit comporter au moins 4 chiffres.');
+      return;
+    }
+    localStorage.setItem('jarvis_security_pin', pinCode);
+    setSavedPin(true);
+    setTimeout(() => setSavedPin(false), 2000);
+  };
+
+  const handleToggleClap = () => {
+    const next = !clapEnabled;
+    setClapEnabled(next);
+    localStorage.setItem('jarvis_clap_wake_enabled', String(next));
+  };
+
   const handleSavePrompt = () => {
     localStorage.setItem('jarvis_custom_system_prompt', systemPrompt);
     setSavedPrompt(true);

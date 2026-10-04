@@ -329,28 +329,124 @@ export interface Contact {
 }
 
 export async function getContacts(): Promise<Contact[]> {
-  const store = getLocalStore();
-  const list: Contact[] = (store as any).contacts || [];
-  if (!list.some((c) => c.name.toLowerCase() === 'roysten')) {
-    list.push({ name: 'Roysten', phone: '22997123456' });
+  const contactsMap = new Map<string, Contact>();
+
+  // 1. Contacts système par défaut
+  contactsMap.set('roysten', { name: 'Roysten', phone: '22946305190' });
+  contactsMap.set('precieux', { name: 'Précieux', phone: '22947988892' });
+
+  // 2. Récupération depuis Supabase (Cloud & Multi-device)
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('memories')
+      .select('*')
+      .eq('category', 'person');
+
+    if (!error && data) {
+      for (const m of data) {
+        if (Array.isArray(m.tags) && m.tags.includes('contact')) {
+          try {
+            const parsed = typeof m.fact === 'string' ? JSON.parse(m.fact) : m.fact;
+            if (parsed && parsed.name && parsed.phone) {
+              const norm = parsed.name
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
+              contactsMap.set(norm, {
+                name: parsed.name,
+                phone: parsed.phone,
+                created_at: m.created_at,
+              });
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  } catch (e) {
+    // Fallback silencieux vers le store local
   }
-  return list;
+
+  // 3. Récupération depuis le store local
+  const store = getLocalStore();
+  const localList: Contact[] = (store as any).contacts || [];
+  for (const c of localList) {
+    const norm = c.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+    if (!contactsMap.has(norm)) {
+      contactsMap.set(norm, c);
+    }
+  }
+
+  return Array.from(contactsMap.values());
 }
 
 export async function saveContact(name: string, phone: string): Promise<Contact> {
-  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  let cleanPhone = phone.replace(/[^0-9]/g, '');
+  if (cleanPhone.length === 8) cleanPhone = '229' + cleanPhone;
+  else if (cleanPhone.length === 10 && cleanPhone.startsWith('01')) cleanPhone = '229' + cleanPhone;
+
   const cleanName = name.trim();
+  const normName = cleanName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  const item: Contact = { name: cleanName, phone: cleanPhone, created_at: new Date().toISOString() };
+
+  // 1. Sauvegarde dans Supabase pour synchronisation immédiate sur Vercel et Mobile
+  try {
+    const { randomUUID } = await import('crypto');
+    const userEmail = process.env.ALLOWED_USER_EMAIL || 'kossoumichelroystenseweto@gmail.com';
+
+    // Vérifier si un contact avec ce tag existe déjà
+    const { data: existing } = await supabaseAdmin
+      .from('memories')
+      .select('*')
+      .eq('category', 'person')
+      .contains('tags', ['contact', normName]);
+
+    if (existing && existing.length > 0) {
+      await supabaseAdmin
+        .from('memories')
+        .update({
+          fact: JSON.stringify({ name: cleanName, phone: cleanPhone }),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing[0].id);
+    } else {
+      await supabaseAdmin.from('memories').insert({
+        id: randomUUID(),
+        user_email: userEmail,
+        category: 'person',
+        fact: JSON.stringify({ name: cleanName, phone: cleanPhone }),
+        importance: 5,
+        tags: ['contact', normName],
+        created_at: new Date().toISOString(),
+      });
+    }
+  } catch (e) {
+    // Si Supabase indisponible, continuer sur le store local
+  }
+
+  // 2. Sauvegarde dans le store local
   const store = getLocalStore();
   if (!(store as any).contacts) (store as any).contacts = [];
-  const existing = (store as any).contacts.find(
-    (c: any) => c.name.toLowerCase() === cleanName.toLowerCase()
+  const existingLocal = (store as any).contacts.find(
+    (c: any) =>
+      c.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase() === normName
   );
-  if (existing) {
-    existing.phone = cleanPhone;
+  if (existingLocal) {
+    existingLocal.phone = cleanPhone;
     saveLocalStore(store);
-    return existing;
+    return existingLocal;
   }
-  const item: Contact = { name: cleanName, phone: cleanPhone, created_at: new Date().toISOString() };
   (store as any).contacts.push(item);
   saveLocalStore(store);
   return item;
@@ -360,18 +456,34 @@ export async function resolveContactPhone(
   nameOrPhone: string
 ): Promise<{ name: string; phone: string } | null> {
   const clean = nameOrPhone.trim();
-  const directDigits = clean.replace(/[^0-9]/g, '');
+  let directDigits = clean.replace(/[^0-9]/g, '');
+  if (directDigits.length === 8) directDigits = '229' + directDigits;
+  else if (directDigits.length === 10 && directDigits.startsWith('01')) directDigits = '229' + directDigits;
+
   if (directDigits.length >= 8) {
     return { name: clean, phone: directDigits };
   }
-  const lower = clean.toLowerCase();
-  if (lower === 'roysten' || lower === 'moi' || lower === 'seweto' || lower === 'michel') {
-    return { name: 'Roysten', phone: '22997123456' };
+
+  const normalize = (s: string) =>
+    s
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const normInput = normalize(clean);
+  if (normInput === 'roysten' || normInput === 'moi' || normInput === 'seweto' || normInput === 'michel') {
+    return { name: 'Roysten', phone: '22946305190' };
   }
+  if (normInput === 'precieux') {
+    return { name: 'Précieux', phone: '22947988892' };
+  }
+
   const contacts = await getContacts();
-  const found = contacts.find(
-    (c) => c.name.toLowerCase() === lower || lower.includes(c.name.toLowerCase())
-  );
+  const found = contacts.find((c) => {
+    const normC = normalize(c.name);
+    return normC === normInput || normC.includes(normInput) || normInput.includes(normC);
+  });
   if (found) return found;
   return null;
 }

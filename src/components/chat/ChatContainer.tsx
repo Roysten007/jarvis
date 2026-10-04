@@ -39,6 +39,10 @@ export interface Message {
     spotifyUri?: string;
     mediaTitle?: string;
     mediaArtist?: string;
+    gatewaySend?: {
+      phone: string;
+      message: string;
+    };
   };
 }
 
@@ -377,7 +381,34 @@ export function ChatContainer({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleExecuteAction = (url: string) => {
+  const handleExecuteAction = async (url: string, gatewayPayload?: { phone: string; message: string }) => {
+    if (!url && !gatewayPayload) return;
+
+    // Si un payload d'envoi en passerelle est disponible (ex: WhatsApp)
+    if (gatewayPayload) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch('http://localhost:3001/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(gatewayPayload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            alert(`⚡ Message WhatsApp expédié avec succès en tâche de fond à +${gatewayPayload.phone} !`);
+            return;
+          }
+        }
+      } catch (e) {
+        // Passerelle locale non joignable, continuer vers l'ouverture d'URL normale
+      }
+    }
+
     if (!url) return;
     if (/^(spotify|vscode|whatsapp|canva|capcut):/i.test(url)) {
       const link = document.createElement('a');
@@ -496,7 +527,7 @@ export function ChatContainer({
                     </div>
 
                     <button
-                      onClick={() => handleExecuteAction(actionMeta.url)}
+                      onClick={() => handleExecuteAction(actionMeta.url, msg.clientAction?.gatewaySend)}
                       className={`w-full sm:w-auto px-4 py-2 rounded text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${actionMeta.btnClass}`}
                     >
                       <ActionIcon className="w-3.5 h-3.5" />

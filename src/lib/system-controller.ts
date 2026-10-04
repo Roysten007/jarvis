@@ -1673,7 +1673,7 @@ Stack : React, Tailwind CSS, composants modulaires, responsive mobile-first, ani
   // D. ENVOI DE MESSAGES AUTOMATIQUES (WHATSAPP, FACEBOOK, INSTAGRAM)
   // --------------------------------------------------------------------------
   const isMsgIntent =
-    (lower.includes('message') || lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') || lower.includes('envoyer') || lower.includes('dis à') || lower.includes('contacte') || lower.includes('disant') || lower.includes(':')) &&
+    (lower.includes('message') || lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') || lower.includes('envoyer') || lower.includes('dis à') || lower.includes('dis a') || lower.includes('contacte') || lower.includes('disant') || lower.includes(':')) &&
     (lower.includes('whatsapp') || lower.includes('watsap') || lower.includes('whatsap') || lower.includes('wa ') || lower.includes('facebook') || lower.includes('fb') || lower.includes('instagram') || lower.includes('insta'));
 
   if (isMsgIntent) {
@@ -1682,89 +1682,87 @@ Stack : React, Tailwind CSS, composants modulaires, responsive mobile-first, ani
     const isIg = lower.includes('instagram') || lower.includes('insta') || lower.includes('ig ');
 
     const platform: 'whatsapp' | 'facebook' | 'instagram' = isWa ? 'whatsapp' : isFb ? 'facebook' : 'instagram';
-    const { automateSendMessage } = await import('./system-indexer');
 
+    // Extraction universelle de numéro de téléphone éventuel
+    const phoneMatch = message.match(/(?:\+?229\s*)?(?:01\s*)?[4-9][0-9](?:\s*[0-9]{2}){3}|(?:\+?[0-9][\s0-9]{6,16}[0-9])/);
+    let detectedPhone = '';
+    if (phoneMatch) {
+      let rawP = phoneMatch[0].replace(/[^0-9]/g, '');
+      if (rawP.length === 8) rawP = '229' + rawP;
+      else if (rawP.length === 10 && rawP.startsWith('01')) rawP = '229' + rawP;
+      if (rawP.length >= 8) detectedPhone = rawP;
+    }
+
+    // Extraction universelle de nom de contact
     let contact = '';
-    let text = '';
-
-    function cleanMessagePayload(raw: string): string {
-      if (!raw) return '';
-      let cleaned = raw.trim();
-      cleaned = cleaned.replace(/^[\s.:,;-]+/, '');
-      cleaned = cleaned.replace(/^(?:(?:le\s+)?message\s+(?:est|sera|dit|contient)(?:\s+envoyé)?(?:\s+depuis\s+[^:.]+)?\s*[:.-]?\s*)/i, '');
-      cleaned = cleaned.replace(/^(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|avec\s+le\s+texte)\s*[:.-]?\s*/i, '');
-      cleaned = cleaned.replace(/^[\s.:,;-]+/, '');
-      cleaned = cleaned.replace(/^["'«“]/, '').replace(/["'»”]$/, '').trim();
-      return cleaned;
-    }
-
-    // Modèle Prioritaire Universel : "je vais envoyer un message à Juste sur whatsapp" / "envoie à Juste sur whatsapp..."
-    const p0 = /(?:(?:je\s+vais|je\s+veux|faut)\s+)?(?:envoyer|envoie|écris|ecris|transmets|dis|mets|contacte)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@+]+)\s*(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s*)?(.*)/i;
-    const m0 = message.match(p0);
-    if (m0 && m0[1]) {
-      const candidateContact = m0[1].trim();
-      const forbidden = ['un', 'une', 'ce', 'cette', 'mon', 'mes', 'des', 'le', 'la', 'les', 'de', 'du'];
-      if (!forbidden.includes(candidateContact.toLowerCase())) {
-        contact = candidateContact;
-        const remainder = m0[2] ? m0[2].trim() : '';
-        text = cleanMessagePayload(remainder);
-      }
-    }
-
-    if (!contact) {
-      // Modèle 1 : "envoie un message à epiphane sur whatsapp en lui disant ok c'est compris"
-      const p1 = /(?:envoie|écris|ecris|mets|transmets|dis)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)?(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|:)\s*(.*)/i;
-      // Modèle 2 : "envoie sur [platform] à [contact] en lui disant [message]"
-      const p2 = /(?:envoie|écris|ecris|mets|transmets|dis)\s+(?:un\s+message\s+)?(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:en\s+lui\s+disant|en\s+disant|pour\s+lui\s+dire|disant(?:\s+que)?|qui\s+dit|:)\s*(.*)/i;
-      // Modèle 3 : "sur [platform] à [contact] : [message]" ou "à [contact] sur [platform] : [message]"
-      const p3 = /(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+(?:à|au)|(?:à|au))\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s*)?:\s*(.*)/i;
-      // Modèle 4 : "dis à [contact] sur [platform] [message]"
-      const p4 = /(?:dis|écris|ecris|envoie)\s+(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+(?:que\s+|:\s*|en\s+lui\s+disant\s+|disant(?:\s+que)?\s*)?(.*)/i;
-      // Modèle 5 : "envoie à [contact] sur [platform] [message]"
-      const p5 = /(?:envoie|écris|ecris)\s+(?:un\s+message\s+)?(?:à|au)\s+([a-zA-Z0-9_@\s+]+?)\s+(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(.*)/i;
-      // Modèle 6 : "envoie sur [platform] à [contact] [message]"
-      const p6 = /(?:envoie|écris|ecris)\s+(?:un\s+message\s+)?(?:sur\s+(?:whatsapp|facebook|fb|instagram|insta)\s+)(?:à|au)\s+([a-zA-Z0-9_@+]+)\s+(.*)/i;
-
-      const m1 = message.match(p1);
-      const m2 = message.match(p2);
-      const m3 = message.match(p3);
-      const m4 = message.match(p4);
-      const m5 = message.match(p5);
-      const m6 = message.match(p6);
-
-      if (m1) {
-        contact = m1[1].trim();
-        text = cleanMessagePayload(m1[2]);
-      } else if (m2) {
-        contact = m2[1].trim();
-        text = cleanMessagePayload(m2[2]);
-      } else if (m3) {
-        contact = m3[1].trim();
-        text = cleanMessagePayload(m3[2]);
-      } else if (m4) {
-        contact = m4[1].trim();
-        text = cleanMessagePayload(m4[2]);
-      } else if (m5) {
-        contact = m5[1].trim();
-        text = cleanMessagePayload(m5[2]);
-      } else if (m6) {
-        contact = m6[1].trim();
-        text = cleanMessagePayload(m6[2]);
-      } else {
-        const textMatch = message.match(/(?:whatsapp|facebook|instagram)\s*:\s*(.*)/i);
-        if (textMatch) {
-          text = cleanMessagePayload(textMatch[1]);
-        } else {
-          text = cleanMessagePayload(message.replace(/^(?:(?:je\s+vais\s+)?(?:envoyer|envoie|écris|ecris|mets)\s+)?(?:un\s+message\s+)?(?:sur\s+)?(?:whatsapp|facebook|instagram)\s*/i, ''));
+    const namePatterns = [
+      /(?:à|a|au|pour)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+      /(?:c'est|c est)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+      /(?:nommé|nomme|nom)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+      /(?:contact|destinataire)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+    ];
+    for (const pat of namePatterns) {
+      const match = message.match(pat);
+      if (match && match[1]) {
+        const candidate = match[1].trim();
+        const blacklist = ['un', 'une', 'ce', 'cette', 'mon', 'ma', 'mes', 'des', 'le', 'la', 'les', 'de', 'du', 'whatsapp', 'facebook', 'instagram', 'message', 'lui', 'moi', 'ceci'];
+        if (!blacklist.includes(candidate.toLowerCase()) && !/^\d+$/.test(candidate)) {
+          contact = candidate;
+          break;
         }
       }
     }
 
-    if (!text && contact) {
-      text = `Bonjour ${contact} ! J'espère que tu vas bien.`;
+    // Extraction du contenu du message
+    let text = '';
+    if (message.includes(':')) {
+      text = message.split(':')[1]?.trim() || '';
+    } else if (lower.includes('dis lui')) {
+      text = message.split(/dis lui/i)[1]?.trim() || '';
+    } else if (lower.includes('dis-lui')) {
+      text = message.split(/dis-lui/i)[1]?.trim() || '';
+    } else if (lower.includes('en lui disant')) {
+      text = message.split(/en lui disant/i)[1]?.trim() || '';
+    } else if (lower.includes('pour lui dire')) {
+      text = message.split(/pour lui dire(?:\s+que)?/i)[1]?.trim() || '';
+    } else if (lower.includes('disant que')) {
+      text = message.split(/disant que/i)[1]?.trim() || '';
+    } else if (lower.includes('disant')) {
+      text = message.split(/disant/i)[1]?.trim() || '';
     }
 
-    const res = await automateSendMessage(platform, contact || 'votre contact', text || 'Bonjour !');
+    // Nettoyage ponctuation / préfixes
+    text = text.replace(/^[\s,.:;-]+/, '').replace(/^["'«“]/, '').replace(/["'»”]$/, '').trim();
+
+    if (!text) {
+      text = contact ? `Bonjour ${contact} ! J'espère que tu vas bien.` : 'Bonjour !';
+    }
+
+    if (platform === 'whatsapp') {
+      const { resolveContactPhone } = await import('./db');
+      let targetPhone = detectedPhone;
+      let targetName = contact;
+
+      if (!targetPhone && contact) {
+        const resolved = await resolveContactPhone(contact);
+        if (resolved) {
+          targetPhone = resolved.phone;
+          targetName = resolved.name;
+        }
+      }
+
+      const res = await sendWhatsAppMessage(text, targetPhone || contact || undefined);
+      return {
+        executed: true,
+        actionNote: res.message ? `Message WhatsApp expédié à ${targetName || 'destinataire'}.` : 'WhatsApp action prête.',
+        directReply: res.message,
+        isPureCommand: true,
+        clientAction: res.clientAction,
+      };
+    }
+
+    const { automateSendMessage } = await import('./system-indexer');
+    const res = await automateSendMessage(platform, contact || detectedPhone || 'votre contact', text);
     return {
       executed: true,
       actionNote: res.actionNote,
@@ -2116,63 +2114,155 @@ Stack : React, Tailwind CSS, composants modulaires, responsive mobile-first, ani
   // --------------------------------------------------------------------------
   // F. GESTION DES CONTACTS & MESSAGES WHATSAPP
   // --------------------------------------------------------------------------
-  if (
-    (lower.includes('enregistre') || lower.includes('sauvegarde') || lower.includes('ajoute')) &&
-    (lower.includes('contact') || lower.includes('numéro') || lower.includes('numero'))
-  ) {
-    const phoneMatch = message.match(/(?:\+?[0-9]{8,15})/);
-    const cleanPhone = phoneMatch ? phoneMatch[0].replace(/[^0-9]/g, '') : '';
-    const nameMatch = message.match(/(?:de|du contact|le contact|nommé|nomme)\s+([a-zA-Z0-9_\-]+)/i);
-    const name = nameMatch ? nameMatch[1].trim() : '';
+  // --------------------------------------------------------------------------
+  // F. GESTION DES CONTACTS & MESSAGES WHATSAPP (INTELLIGENCE NATURELLE POUSSÉE)
+  // --------------------------------------------------------------------------
 
-    if (cleanPhone && name) {
+  // Extraction intelligente de numéro de téléphone (avec ou sans espaces, avec ou sans +)
+  const extractPhoneFromText = (str: string): string => {
+    // Détecte les formats béninois et internationaux : +229 47988892, +229 01 43 40 53 61, 47 98 88 92, etc.
+    const match = str.match(/(?:\+?229\s*)?(?:01\s*)?[4-9][0-9](?:\s*[0-9]{2}){3}|(?:\+?[0-9][\s0-9]{6,16}[0-9])/);
+    if (match) {
+      let raw = match[0].replace(/[^0-9]/g, '');
+      if (raw.length === 8) raw = '229' + raw;
+      else if (raw.length === 10 && raw.startsWith('01')) raw = '229' + raw;
+      if (raw.length >= 8) return raw;
+    }
+    return '';
+  };
+
+  // Extraction intelligente de nom de contact
+  const extractNameFromText = (str: string): string => {
+    const patterns = [
+      /(?:c'est|c est)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+      /(?:nommé|nomme|nom)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+      /(?:du contact|le contact|contact)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+      /(?:à|a|au|pour)\s+([a-zA-ZÀ-ÿ0-9_\-]+)/i,
+    ];
+    for (const p of patterns) {
+      const m = str.match(p);
+      if (m && m[1]) {
+        const candidate = m[1].trim();
+        const blacklist = ['ce', 'un', 'le', 'la', 'les', 'mon', 'ma', 'whatsapp', 'message', 'lui', 'moi', 'ceci'];
+        if (!blacklist.includes(candidate.toLowerCase()) && !/^\d+$/.test(candidate)) {
+          return candidate;
+        }
+      }
+    }
+    return '';
+  };
+
+  // CAS 1 : Enregistrement de contact (ex: "enregistre ce contact +229 47988892, c'est précieux et envoie lui le message")
+  if (
+    (lower.includes('enregistre') || lower.includes('sauvegarde') || lower.includes('ajoute') || lower.includes('crée')) &&
+    (lower.includes('contact') || lower.includes('numéro') || lower.includes('numero') || lower.includes('c\'est') || lower.includes('c est'))
+  ) {
+    const detectedPhone = extractPhoneFromText(message);
+    const detectedName = extractNameFromText(message);
+
+    if (detectedPhone && detectedName) {
       const { saveContact } = await import('./db');
-      await saveContact(name, cleanPhone);
+      await saveContact(detectedName, detectedPhone);
+
+      // Si l'utilisateur demande AUSSI d'envoyer le message dans la foulée
+      if (lower.includes('envoie') || lower.includes('message') || lower.includes('dis lui') || lower.includes('ecris')) {
+        let msgToSend = '';
+        if (message.includes(':')) {
+          msgToSend = message.split(':')[1]?.trim() || '';
+        } else if (lower.includes('disant que')) {
+          msgToSend = message.split(/disant que/i)[1]?.trim() || '';
+        } else if (lower.includes('dis lui')) {
+          msgToSend = message.split(/dis lui/i)[1]?.trim() || '';
+        } else {
+          msgToSend = `Bonjour ${detectedName} !`;
+        }
+
+        if (!msgToSend || msgToSend.length < 2) {
+          msgToSend = `Bonjour ${detectedName} !`;
+        }
+
+        const result = await sendWhatsAppMessage(msgToSend, detectedPhone);
+        return {
+          executed: true,
+          actionNote: `Contact ${detectedName} (+${detectedPhone}) enregistré et message expédié.`,
+          directReply: `✅ Contact **${detectedName}** (+${detectedPhone}) enregistré dans votre carnet d'adresses.\n\n⚡ ${result.message}`,
+          isPureCommand: true,
+          clientAction: result.clientAction,
+        };
+      }
+
       return {
         executed: true,
-        actionNote: `Contact ${name} (+${cleanPhone}) enregistré dans le répertoire.`,
-        directReply: `C'est enregistré, Monsieur Roysten. Le contact ${name} (+${cleanPhone}) est maintenant dans votre répertoire JARVIS.`,
+        actionNote: `Contact ${detectedName} (+${detectedPhone}) enregistré.`,
+        directReply: `C'est enregistré, Monsieur Roysten ! Le contact **${detectedName}** (+${detectedPhone}) est sauvegardé dans votre répertoire. Vous pouvez désormais lui envoyer des messages par simple commande vocale.`,
         isPureCommand: true,
       };
     }
   }
 
+  // CAS 2 : Ordre d'envoi de message WhatsApp (ex: "ecris un message sur whatsapp à précieux , dis lui bonjour")
   if (
-    lower.includes('whatsapp') &&
-    (lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') ||
-      lower.includes('message') || lower.includes('dis à') || lower.includes('dis a') ||
-      lower.includes('texte') || lower.includes(':'))
+    lower.includes('whatsapp') ||
+    ((lower.includes('écris') || lower.includes('ecris') || lower.includes('envoie') || lower.includes('dis à') || lower.includes('dis a')) &&
+      (lower.includes('message') || lower.includes('whatsapp')))
   ) {
-    const phoneMatch = message.match(/(?:\+?[0-9]{8,15})/);
-    const cleanPhone = phoneMatch ? phoneMatch[0].replace(/[^0-9]/g, '') : '';
-    const contactMatch = message.match(/(?:à|a|au|pour)\s+([a-zA-Z0-9_\-\+]+)/i);
-    const rawContact = contactMatch ? contactMatch[1].trim() : '';
-    const targetContact = cleanPhone || rawContact || 'Roysten';
+    const detectedPhone = extractPhoneFromText(message);
+    const detectedName = extractNameFromText(message);
 
+    // Détermination du message à expédier
     let msgToSend = '';
     if (message.includes(':')) {
       msgToSend = message.split(':')[1]?.trim() || '';
     } else if (lower.includes('disant que')) {
       msgToSend = message.split(/disant que/i)[1]?.trim() || '';
+    } else if (lower.includes('dis lui')) {
+      msgToSend = message.split(/dis lui/i)[1]?.trim() || '';
     } else if (lower.includes('pour lui dire')) {
       msgToSend = message.split(/pour lui dire(?:\s+que)?/i)[1]?.trim() || '';
+    } else if (lower.includes('dire')) {
+      msgToSend = message.split(/dire/i)[1]?.trim() || '';
     } else {
-      msgToSend = rawContact ? `Salut ${rawContact} ! Message envoyé depuis JARVIS.` : 'Bonjour !';
+      msgToSend = detectedName ? `Bonjour ${detectedName} !` : 'Bonjour !';
     }
 
     if (!msgToSend || msgToSend.length < 2) {
-      msgToSend = rawContact ? `Salut ${rawContact} !` : 'Bonjour !';
+      msgToSend = detectedName ? `Bonjour ${detectedName} !` : 'Bonjour !';
     }
 
-    const result = await sendWhatsAppMessage(msgToSend, targetContact);
+    const { resolveContactPhone } = await import('./db');
+    let targetPhone = detectedPhone;
+    let targetDisplayName = detectedName || 'votre contact';
 
-    return {
-      executed: true,
-      actionNote: (result as any).actionNote || `Message WhatsApp expédié à ${targetContact}.`,
-      directReply: result.message,
-      isPureCommand: true,
-      clientAction: result.clientAction,
-    };
+    // Résolution via carnet d'adresses si pas de numéro direct
+    if (!targetPhone && detectedName) {
+      const resolved = await resolveContactPhone(detectedName);
+      if (resolved) {
+        targetPhone = resolved.phone;
+        targetDisplayName = resolved.name;
+      }
+    }
+
+    // Si on a un numéro résolu ou direct : EXPÉDITION IMMÉDIATE
+    if (targetPhone) {
+      const result = await sendWhatsAppMessage(msgToSend, targetPhone);
+      return {
+        executed: true,
+        actionNote: `Message WhatsApp expédié à ${targetDisplayName} (+${targetPhone}).`,
+        directReply: result.message,
+        isPureCommand: true,
+        clientAction: result.clientAction,
+      };
+    }
+
+    // Si le contact n'est pas encore dans le répertoire : DEMANDER SON NUMÉRO AU LIEU D'HALLUCINER
+    if (detectedName) {
+      return {
+        executed: true,
+        actionNote: `Demande de numéro pour le contact ${detectedName}.`,
+        directReply: `Je n'ai pas encore le numéro de **${detectedName}** dans votre répertoire, Monsieur Roysten.\n\nDonnez-moi simplement son numéro (par exemple : « *Son numéro est le +229...* » ou « *Enregistre ${detectedName} : +229...* ») et j'expédierai immédiatement votre message : « *${msgToSend}* ».`,
+        isPureCommand: true,
+      };
+    }
   }
 
   return { executed: false };

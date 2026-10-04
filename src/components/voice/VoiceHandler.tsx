@@ -192,7 +192,56 @@ export function VoiceHandler({
     audio.play().catch((err) => console.warn('Erreur lecture /voix.mp3:', err));
   };
 
-  // Traitement sécurisé de la file vocale
+  // Secours vocal natif (SpeechSynthesis Web API) si l'API Edge TTS échoue ou est lente
+  const speakWithNativeSpeech = useCallback(
+    (text: string, onDone: () => void) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        onDone();
+        return;
+      }
+
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = voiceLang === 'fr' ? 'fr-FR' : 'en-US';
+        utterance.pitch = pitch;
+        utterance.rate = rate;
+
+        const available = window.speechSynthesis.getVoices();
+        if (available.length > 0) {
+          const match =
+            available.find((v) => v.name === selectedVoiceName) ||
+            available.find((v) => v.lang.toLowerCase().startsWith(voiceLang)) ||
+            available[0];
+          if (match) utterance.voice = match;
+        }
+
+        let hasEnded = false;
+        const finish = () => {
+          if (hasEnded) return;
+          hasEnded = true;
+          onDone();
+        };
+
+        utterance.onend = finish;
+        utterance.onerror = (e) => {
+          console.warn('[VOICE] Fallback native error:', e);
+          finish();
+        };
+
+        // Timeout de sécurité max 10s pour le fallback
+        setTimeout(finish, Math.min(10000, Math.max(3000, text.length * 100)));
+
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        console.warn('[VOICE] Exception fallback native:', e);
+        onDone();
+      }
+    },
+    [voiceLang, pitch, rate, selectedVoiceName]
+  );
+
+  // Traitement sécurisé de la file vocale avec anti-boucle et double moteur
   const processSpeechQueue = useCallback(() => {
     if (typeof window === 'undefined') return;
     if (isPlayingQueueRef.current || speechQueueRef.current.length === 0) return;
@@ -222,6 +271,13 @@ export function VoiceHandler({
     isPlayingQueueRef.current = true;
     updateSpeaking(true);
 
+    // RÈGLE ANTI-BOUCLE CRITIQUE : Couper immédiatement le micro pour qu'il n'entende JAMAIS la voix de JARVIS
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
     const onSentenceFinish = () => {
       if (audioWatchdogRef.current) {
         clearTimeout(audioWatchdogRef.current);
@@ -233,8 +289,8 @@ export function VoiceHandler({
         processSpeechQueue();
       } else {
         updateSpeaking(false);
-        // Mode mains libres : relancer l'écoute si activé (avec délai suffisant pour éviter tout écho)
-        if (handsFree && recognitionRef.current && !isPlayingQueueRef.current) {
+        // Mode mains libres : relancer l'écoute avec délai de sécurité anti-écho de 800ms
+        if (handsFree && recognitionRef.current) {
           setTimeout(() => {
             try {
               if (handsFree && !isPlayingQueueRef.current) {
@@ -244,12 +300,12 @@ export function VoiceHandler({
                 setIsListening(true);
               }
             } catch (e) {}
-          }, 1000);
+          }, 800);
         }
       }
     };
 
-    // Synthèse via l'API TTS (MsEdgeTTS HD Neural)
+    // Tentative 1 : Synthèse via Edge TTS HD Neural
     const controller = new AbortController();
     ttsAbortControllerRef.current = controller;
 
@@ -265,9 +321,9 @@ export function VoiceHandler({
       })
       .then((blob) => {
         ttsAbortControllerRef.current = null;
-        // Si le serveur a renvoyé un blob vide ou JSON
         if (blob.size < 100) {
-          onSentenceFinish();
+          // Si le blob est vide, basculer immédiatement sur le moteur natif
+          speakWithNativeSpeech(sentence, onSentenceFinish);
           return;
         }
 
@@ -291,33 +347,34 @@ export function VoiceHandler({
         };
 
         audio.onended = cleanupAndFinish;
-        audio.onerror = (e) => {
-          console.warn('[TTS] Audio playback error:', e);
-          cleanupAndFinish();
+        audio.onerror = () => {
+          // En cas d'erreur de lecture audio, secours natif immédiat
+          speakWithNativeSpeech(sentence, onSentenceFinish);
         };
 
-        // Chien de garde (watchdog) : max 8s par phrase pour ne JAMAIS geler la file vocale
+        // Chien de garde (watchdog) : max 8s par phrase
         audioWatchdogRef.current = setTimeout(() => {
-          console.warn('[TTS] Watchdog audio timeout:', sentence.substring(0, 30));
           try {
             audio.pause();
           } catch (e) {}
           cleanupAndFinish();
         }, Math.min(8000, Math.max(4000, sentence.length * 100)));
 
-        audio.play().catch((playErr) => {
-          console.warn('[TTS] Play blocked:', playErr);
-          cleanupAndFinish();
+        audio.play().catch(() => {
+          // Si autoplay bloqué ou échec, secours natif
+          speakWithNativeSpeech(sentence, onSentenceFinish);
         });
       })
       .catch((err) => {
         ttsAbortControllerRef.current = null;
         if (err.name !== 'AbortError') {
-          console.warn('[TTS] API error:', err);
+          // BASCULE DE SECOURS IMMÉDIATE : SpeechSynthesis natif du navigateur
+          speakWithNativeSpeech(sentence, onSentenceFinish);
+        } else {
+          onSentenceFinish();
         }
-        onSentenceFinish();
       });
-  }, [voiceLang, handsFree, setIsListening, updateSpeaking, playVoiceOnWake]);
+  }, [voiceLang, handsFree, setIsListening, updateSpeaking, playVoiceOnWake, speakWithNativeSpeech]);
 
   // Ajouter un texte ou phrase à la file
   const queueSpeech = useCallback(
@@ -331,10 +388,8 @@ export function VoiceHandler({
 
       if (!clean || clean.length < 2) return;
 
-      // Limiter la file vocale à 2 phrases max pour éviter tout emballement
-      if (speechQueueRef.current.length >= 2) return;
-
-      speechQueueRef.current.push(clean);
+      // Anti-emballement : une seule phrase active à la fois
+      speechQueueRef.current = [clean];
       processSpeechQueue();
     },
     [processSpeechQueue]

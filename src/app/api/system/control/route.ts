@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'whatsapp_message') {
       const result = await sendWhatsAppMessage(
-        messageText || 'Bonjour ! Message envoyé depuis JARVIS.',
+        messageText || 'Bonjour !',
         contactOrPhone
       );
       return NextResponse.json(result);
